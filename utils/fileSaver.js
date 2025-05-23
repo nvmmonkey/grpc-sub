@@ -7,8 +7,16 @@ const { Connection } = require('@solana/web3.js');
 
 // Initialize RPC connection for ALT resolution if available
 let rpcConnection = null;
+let altResolutionEnabled = false;
+
 if (process.env.RPC_URL) {
-  rpcConnection = new Connection(process.env.RPC_URL, 'confirmed');
+  try {
+    rpcConnection = new Connection(process.env.RPC_URL, 'confirmed');
+    altResolutionEnabled = true;
+  } catch (error) {
+    // Silent fail - will be logged in transactionParser
+    rpcConnection = null;
+  }
 }
 
 const MAX_SAVED_TRANSACTIONS = 100;
@@ -102,8 +110,8 @@ async function extractTransactionDetails(data, transactionCount) {
     // Try to resolve loaded addresses from ALTs
     let loadedAddresses = meta?.loadedAddresses;
     
-    // If no loaded addresses in meta and we have RPC connection, try to resolve from ALTs
-    if (!loadedAddresses && rpcConnection) {
+    // If no loaded addresses in meta and ALT resolution is enabled, try to resolve from ALTs
+    if (!loadedAddresses && altResolutionEnabled && rpcConnection) {
       try {
         loadedAddresses = await resolveLoadedAddresses(tx, meta, rpcConnection);
       } catch (error) {

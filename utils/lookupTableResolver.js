@@ -16,11 +16,17 @@ async function loadAddressLookupTable(connection, tableAddress) {
       return lookupTableCache.get(cacheKey);
     }
     
-    // Fetch from RPC
-    const lookupTableAccount = await connection.getAddressLookupTable(tableAddress);
+    // Fetch from RPC with timeout
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Timeout')), 5000)
+    );
+    
+    const fetchPromise = connection.getAddressLookupTable(tableAddress);
+    const lookupTableAccount = await Promise.race([fetchPromise, timeoutPromise]);
     
     if (!lookupTableAccount.value) {
-      console.warn(`${colors.yellow}Warning: Could not load lookup table ${tableAddress.toString()}${colors.reset}`);
+      // Cache null result to avoid repeated failures
+      lookupTableCache.set(cacheKey, null);
       return null;
     }
     
@@ -28,10 +34,23 @@ async function loadAddressLookupTable(connection, tableAddress) {
     lookupTableCache.set(cacheKey, lookupTableAccount.value);
     return lookupTableAccount.value;
   } catch (error) {
-    console.error(`${colors.red}Error loading lookup table ${tableAddress.toString()}:${colors.reset}`, error.message);
+    // Cache null result to avoid repeated failures
+    const cacheKey = tableAddress.toString();
+    lookupTableCache.set(cacheKey, null);
+    
+    // Only log error once per table
+    if (!failedTables.has(cacheKey)) {
+      failedTables.add(cacheKey);
+      if (process.env.DEBUG === 'true') {
+        console.error(`${colors.yellow}Warning: Could not load ALT ${tableAddress.toString().substring(0, 8)}...${colors.reset}`);
+      }
+    }
     return null;
   }
 }
+
+// Track failed tables to avoid spamming logs
+const failedTables = new Set();
 
 /**
  * Resolve all accounts including those from lookup tables

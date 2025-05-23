@@ -7,7 +7,9 @@
     "start": "node index.js",
     "dev": "node index.js",
     "view": "node view-saved.js",
-    "analyze": "node analyze-accounts.js"
+    "analyze": "node analyze-accounts.js",
+    "test-rpc": "node test-rpc.js",
+    "check-alts": "node check-alts.js"
   },
   "keywords": [
     "solana",

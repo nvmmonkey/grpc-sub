@@ -7,13 +7,42 @@ const { getAccountName, formatAccountDisplay } = require('./accountIdentifier');
 const { resolveLoadedAddresses, resolveAccountsWithLookupTables } = require('./lookupTableResolver');
 const { Connection } = require('@solana/web3.js');
 
-// Initialize RPC connection if available
+// RPC connection variables
 let rpcConnection = null;
-if (process.env.RPC_URL) {
-  rpcConnection = new Connection(process.env.RPC_URL, 'confirmed');
-  console.log(`${colors.green}✓ RPC connection established for ALT resolution${colors.reset}`);
-} else {
-  console.log(`${colors.yellow}⚠ No RPC_URL configured - ALT resolution disabled${colors.reset}`);
+let altResolutionEnabled = false;
+let rpcInitialized = false;
+
+/**
+ * Initialize RPC connection for ALT resolution
+ */
+async function initializeRpcConnection() {
+  if (rpcInitialized) return rpcConnection;
+  
+  rpcInitialized = true;
+  
+  // Check if ALT resolution is disabled
+  if (process.env.ALT_RESOLUTION === 'false') {
+    console.log(`${colors.dim}ℹ ALT resolution disabled by configuration${colors.reset}`);
+    return null;
+  }
+  
+  if (process.env.RPC_URL) {
+    try {
+      rpcConnection = new Connection(process.env.RPC_URL, 'confirmed');
+      // Test the connection with a simple call
+      await rpcConnection.getSlot();
+      altResolutionEnabled = true;
+      console.log(`${colors.green}✓ RPC connection established for ALT resolution${colors.reset}`);
+    } catch (error) {
+      console.log(`${colors.yellow}⚠ RPC connection failed - ALT resolution disabled${colors.reset}`);
+      console.log(`${colors.dim}  ${error.message}${colors.reset}`);
+      rpcConnection = null;
+    }
+  } else {
+    console.log(`${colors.dim}ℹ No RPC_URL configured - ALT resolution disabled${colors.reset}`);
+  }
+  
+  return rpcConnection;
 }
 
 /**
@@ -172,6 +201,11 @@ function displayTransactionMeta(meta, formattedKeys) {
 async function parseAndLogTransaction(data, transactionCount, options = {}) {
   const { filterMode, targetSigners } = options;
   
+  // Initialize RPC connection if not already done
+  if (!rpcInitialized && process.env.RPC_URL) {
+    await initializeRpcConnection();
+  }
+  
   // Extract transaction data
   const txData = data.transaction;
   const slot = txData.slot;
@@ -222,8 +256,8 @@ async function parseAndLogTransaction(data, transactionCount, options = {}) {
       // Try to resolve loaded addresses from ALTs
       let loadedAddresses = meta?.loadedAddresses;
       
-      // If no loaded addresses in meta and we have RPC connection, try to resolve from ALTs
-      if (!loadedAddresses && rpcConnection) {
+      // If no loaded addresses in meta and we have RPC connection enabled, try to resolve from ALTs
+      if (!loadedAddresses && altResolutionEnabled && rpcConnection) {
         try {
           loadedAddresses = await resolveLoadedAddresses(tx, meta, rpcConnection);
         } catch (error) {
