@@ -256,12 +256,26 @@ async function parseAndLogTransaction(data, transactionCount, options = {}) {
       // Try to resolve loaded addresses from ALTs
       let loadedAddresses = meta?.loadedAddresses;
       
-      // If no loaded addresses in meta and we have RPC connection enabled, try to resolve from ALTs
-      if (!loadedAddresses && altResolutionEnabled && rpcConnection) {
+      // Only try RPC resolution if:
+      // 1. No loaded addresses in metadata (gRPC didn't provide them)
+      // 2. ALT resolution is enabled
+      // 3. We have a working RPC connection
+      // 4. The transaction actually uses ALTs (has addressTableLookups)
+      const hasALTs = tx?.message?.addressTableLookups && tx.message.addressTableLookups.length > 0;
+      
+      if (!loadedAddresses && altResolutionEnabled && rpcConnection && hasALTs) {
         try {
           loadedAddresses = await resolveLoadedAddresses(tx, meta, rpcConnection);
+          if (loadedAddresses) {
+            const total = (loadedAddresses.writable?.length || 0) + (loadedAddresses.readonly?.length || 0);
+            if (process.env.DEBUG === 'true') {
+              console.log(`${colors.dim}[ALT] Resolved ${total} addresses from RPC${colors.reset}`);
+            }
+          }
         } catch (error) {
-          console.warn(`${colors.yellow}Warning: Could not resolve ALTs: ${error.message}${colors.reset}`);
+          if (process.env.DEBUG === 'true') {
+            console.warn(`${colors.yellow}Warning: Could not resolve ALTs: ${error.message}${colors.reset}`);
+          }
         }
       }
       

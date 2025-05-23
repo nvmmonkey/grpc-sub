@@ -110,12 +110,14 @@ async function extractTransactionDetails(data, transactionCount) {
     // Try to resolve loaded addresses from ALTs
     let loadedAddresses = meta?.loadedAddresses;
     
-    // If no loaded addresses in meta and ALT resolution is enabled, try to resolve from ALTs
-    if (!loadedAddresses && altResolutionEnabled && rpcConnection) {
+    // Only use RPC if gRPC didn't provide loaded addresses AND transaction uses ALTs
+    const hasALTs = tx?.message?.addressTableLookups && tx.message.addressTableLookups.length > 0;
+    
+    if (!loadedAddresses && altResolutionEnabled && rpcConnection && hasALTs) {
       try {
         loadedAddresses = await resolveLoadedAddresses(tx, meta, rpcConnection);
       } catch (error) {
-        console.warn(`Could not resolve ALTs for saving: ${error.message}`);
+        // Silent fail for saving
       }
     }
     

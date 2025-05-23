@@ -68,6 +68,12 @@ RPC_URL=https://api.mainnet-beta.solana.com  # Optional - for Address Lookup Tab
 - Public endpoints: `https://api.mainnet-beta.solana.com` or `https://api.devnet.solana.com`
 - Your own RPC endpoint (e.g., QuickNode, Helius, etc.)
 
+**RPC Optimization:**
+- The system prioritizes gRPC data and only uses RPC when gRPC doesn't provide loaded addresses
+- RPC calls are rate-limited (default: 10 calls/second, configurable via `RPC_RATE_LIMIT`)
+- ALT data is cached for 5 minutes to minimize RPC usage
+- Failed lookups are cached to prevent repeated attempts
+
 ## Configuration
 
 ### Signer Filter Configuration

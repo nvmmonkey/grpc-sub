@@ -1,9 +1,30 @@
 const { Connection, PublicKey } = require('@solana/web3.js');
 const colors = require('./colors');
 const { decodePublicKey } = require('./decoders');
+const { RateLimiter } = require('./rateLimiter');
 
 // Cache for lookup tables to avoid repeated RPC calls
 const lookupTableCache = new Map();
+const cacheTimestamps = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+// Track failed tables to avoid spamming logs
+const failedTables = new Set();
+
+// Rate limiter - adjust the number based on your RPC limits
+const rateLimiter = new RateLimiter(process.env.RPC_RATE_LIMIT ? parseInt(process.env.RPC_RATE_LIMIT) : 10);
+
+// Periodically clean up old cache entries
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, timestamp] of cacheTimestamps.entries()) {
+    if (now - timestamp > CACHE_TTL) {
+      lookupTableCache.delete(key);
+      cacheTimestamps.delete(key);
+      failedTables.delete(key);
+    }
+  }
+}, 60000); // Clean up every minute
 
 /**
  * Load address lookup table from Solana RPC
@@ -16,27 +37,34 @@ async function loadAddressLookupTable(connection, tableAddress) {
       return lookupTableCache.get(cacheKey);
     }
     
-    // Fetch from RPC with timeout
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Timeout')), 5000)
-    );
+    // Fetch from RPC with rate limiting and timeout
+    const fetchPromise = rateLimiter.call(async () => {
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Timeout')), 5000)
+      );
+      
+      const lookupPromise = connection.getAddressLookupTable(tableAddress);
+      return Promise.race([lookupPromise, timeoutPromise]);
+    });
     
-    const fetchPromise = connection.getAddressLookupTable(tableAddress);
-    const lookupTableAccount = await Promise.race([fetchPromise, timeoutPromise]);
+    const lookupTableAccount = await fetchPromise;
     
     if (!lookupTableAccount.value) {
       // Cache null result to avoid repeated failures
       lookupTableCache.set(cacheKey, null);
+      cacheTimestamps.set(cacheKey, Date.now());
       return null;
     }
     
     // Cache the result
     lookupTableCache.set(cacheKey, lookupTableAccount.value);
+    cacheTimestamps.set(cacheKey, Date.now());
     return lookupTableAccount.value;
   } catch (error) {
     // Cache null result to avoid repeated failures
     const cacheKey = tableAddress.toString();
     lookupTableCache.set(cacheKey, null);
+    cacheTimestamps.set(cacheKey, Date.now());
     
     // Only log error once per table
     if (!failedTables.has(cacheKey)) {
@@ -48,9 +76,6 @@ async function loadAddressLookupTable(connection, tableAddress) {
     return null;
   }
 }
-
-// Track failed tables to avoid spamming logs
-const failedTables = new Set();
 
 /**
  * Resolve all accounts including those from lookup tables
@@ -191,9 +216,19 @@ async function resolveLoadedAddresses(transaction, meta, connection) {
  * Get lookup table stats
  */
 function getLookupTableStats() {
+  const cacheHits = Array.from(lookupTableCache.values()).filter(v => v !== null).length;
+  const cacheMisses = Array.from(lookupTableCache.values()).filter(v => v === null).length;
+  
   return {
     cachedTables: lookupTableCache.size,
-    clearCache: () => lookupTableCache.clear()
+    successfulTables: cacheHits,
+    failedTables: cacheMisses,
+    cacheHitRate: lookupTableCache.size > 0 ? ((cacheHits / lookupTableCache.size) * 100).toFixed(1) + '%' : 'N/A',
+    clearCache: () => {
+      lookupTableCache.clear();
+      cacheTimestamps.clear();
+      failedTables.clear();
+    }
   };
 }
 

@@ -198,6 +198,17 @@ async function startMevMonitor() {
         }
       }, 30000); // Every 30 seconds
     }
+    
+    // Show ALT cache stats periodically if ALT resolution is enabled
+    if (process.env.RPC_URL && process.env.ALT_RESOLUTION !== 'false') {
+      const { getLookupTableStats } = require('./utils/lookupTableResolver');
+      setInterval(() => {
+        const stats = getLookupTableStats();
+        if (stats.cachedTables > 0) {
+          console.log(`\n${colors.dim}[ALT Cache] Tables: ${stats.cachedTables} | Success: ${stats.successfulTables} | Failed: ${stats.failedTables} | Hit Rate: ${stats.cacheHitRate}${colors.reset}\n`);
+        }
+      }, 60000); // Every minute
+    }
 
     // Start the subscription with auto-reconnect
     await subscribeWithReconnect(
