@@ -26,7 +26,23 @@ function logTransaction(txData) {
   const tx = txData.transaction;
   const meta = tx.meta;
   const slot = tx.slot;
-  const signature = bs58.encode(tx.signature);
+  // Handle signature - it might be a Buffer or Uint8Array
+  let signature;
+  try {
+    if (tx.signature instanceof Buffer) {
+      signature = bs58.encode(tx.signature);
+    } else if (tx.signature instanceof Uint8Array) {
+      signature = bs58.encode(tx.signature);
+    } else if (typeof tx.signature === 'string') {
+      signature = tx.signature;
+    } else {
+      // If signature is in a different format, try to convert it
+      signature = bs58.encode(Buffer.from(tx.signature));
+    }
+  } catch (e) {
+    signature = 'Unable to decode signature';
+    console.error('Signature decode error:', e.message);
+  }
   
   console.log(`${colors.bright}${colors.cyan}${'='.repeat(80)}${colors.reset}`);
   console.log(`${colors.bright}${colors.green}[MEV Transaction Detected]${colors.reset}`);
@@ -42,7 +58,18 @@ function logTransaction(txData) {
   
   console.log(`\n${colors.bright}${colors.blue}Account Keys:${colors.reset}`);
   accountKeys.forEach((key, index) => {
-    const pubkey = bs58.encode(key);
+    let pubkey;
+    try {
+      if (key instanceof Buffer || key instanceof Uint8Array) {
+        pubkey = bs58.encode(key);
+      } else if (typeof key === 'string') {
+        pubkey = key;
+      } else {
+        pubkey = bs58.encode(Buffer.from(key));
+      }
+    } catch (e) {
+      pubkey = 'Unable to decode key';
+    }
     const isWritable = index < message.header.numRequiredSignatures - message.header.numReadonlySignedAccounts ||
                       (index >= message.header.numRequiredSignatures && 
                        index < accountKeys.length - message.header.numReadonlyUnsignedAccounts);
@@ -59,7 +86,19 @@ function logTransaction(txData) {
   // Log instructions
   console.log(`\n${colors.bright}${colors.blue}Instructions:${colors.reset}`);
   message.instructions.forEach((ix, index) => {
-    const programId = bs58.encode(accountKeys[ix.programIdIndex]);
+    let programId;
+    try {
+      const programKey = accountKeys[ix.programIdIndex];
+      if (programKey instanceof Buffer || programKey instanceof Uint8Array) {
+        programId = bs58.encode(programKey);
+      } else if (typeof programKey === 'string') {
+        programId = programKey;
+      } else {
+        programId = bs58.encode(Buffer.from(programKey));
+      }
+    } catch (e) {
+      programId = 'Unable to decode program ID';
+    }
     console.log(`  [${index}] Program: ${programId}`);
     if (ix.data && ix.data.length > 0) {
       const dataHex = Buffer.from(ix.data).toString('hex');
@@ -89,7 +128,19 @@ function logTransaction(txData) {
         const postBalance = meta.postBalances[index];
         const change = postBalance - preBalance;
         if (change !== 0) {
-          const pubkey = bs58.encode(accountKeys[index]);
+          let pubkey;
+        try {
+          const key = accountKeys[index];
+          if (key instanceof Buffer || key instanceof Uint8Array) {
+            pubkey = bs58.encode(key);
+          } else if (typeof key === 'string') {
+            pubkey = key;
+          } else {
+            pubkey = bs58.encode(Buffer.from(key));
+          }
+        } catch (e) {
+          pubkey = 'Unable to decode key';
+        }
           const changeStr = change > 0 ? `+${change}` : `${change}`;
           const changeColor = change > 0 ? colors.green : colors.red;
           console.log(`  ${pubkey}: ${changeColor}${changeStr}${colors.reset} lamports`);
@@ -169,18 +220,19 @@ async function subscribeCommand(client, args) {
 (async () => {
   try {
     // Check for required environment variables
-    if (!process.env.GRPC_URL || !process.env.X_TOKEN) {
-      console.error(`${colors.red}Error: Missing required environment variables!${colors.reset}`);
+    if (!process.env.GRPC_URL) {
+      console.error(`${colors.red}Error: Missing GRPC_URL environment variable!${colors.reset}`);
       console.error('Please create a .env file with:');
       console.error('GRPC_URL=your_grpc_url');
-      console.error('X_TOKEN=your_access_token');
+      console.error('X_TOKEN=your_access_token (optional)');
       process.exit(1);
     }
 
     // Initialize Yellowstone gRPC client
+    // X_TOKEN is optional - some gRPC endpoints don't require authentication
     const client = new Client(
       process.env.GRPC_URL,
-      process.env.X_TOKEN,
+      process.env.X_TOKEN || undefined,
       undefined
     );
 
