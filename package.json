@@ -1,0 +1,29 @@
+{
+  "name": "grpc-sub",
+  "version": "1.0.0",
+  "description": "Real-time MEV program transaction monitor for Solana",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js"
+  },
+  "keywords": [
+    "solana",
+    "mev",
+    "grpc",
+    "yellowstone",
+    "blockchain",
+    "monitoring"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@triton-one/yellowstone-grpc": "^0.4.0",
+    "@solana/web3.js": "^1.90.0",
+    "bs58": "^5.0.0",
+    "dotenv": "^16.4.5"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
