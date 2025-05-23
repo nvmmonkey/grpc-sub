@@ -9,6 +9,7 @@ const MEV_PROGRAM_ID = "MEViEnscUm6tsQRoGd9h6nLQaQspKj7DB2M5FwM3Xvz";
 
 // Global counter for transactions
 let transactionCount = 0;
+let debugMode = true; // Enable debug mode to see raw data
 
 // Color codes for console output
 const colors = {
@@ -23,31 +24,68 @@ const colors = {
 };
 
 /**
+ * Deep inspect object structure
+ */
+function inspectStructure(obj, path = 'root', maxDepth = 3, currentDepth = 0) {
+  if (currentDepth >= maxDepth) return;
+  
+  const indent = '  '.repeat(currentDepth);
+  
+  if (obj === null || obj === undefined) {
+    console.log(`${indent}${path}: ${obj}`);
+    return;
+  }
+  
+  if (obj instanceof Buffer || obj instanceof Uint8Array) {
+    console.log(`${indent}${path}: [${obj.constructor.name} length=${obj.length}]`);
+    return;
+  }
+  
+  if (typeof obj !== 'object') {
+    console.log(`${indent}${path}: ${typeof obj} = ${JSON.stringify(obj).substring(0, 100)}`);
+    return;
+  }
+  
+  console.log(`${indent}${path}: {`);
+  for (const key in obj) {
+    if (obj.hasOwnProperty(key)) {
+      inspectStructure(obj[key], key, maxDepth, currentDepth + 1);
+    }
+  }
+  console.log(`${indent}}`);
+}
+
+/**
  * Formats and logs transaction details from Yellowstone gRPC format
  */
 function logTransaction(data) {
   try {
     transactionCount++;
     
-    // The structure from Yellowstone gRPC is: data.transaction
-    const txData = data.transaction;
-    if (!txData) {
-      console.log(`${colors.red}No transaction data found${colors.reset}`);
-      return;
+    // Debug mode: Show raw structure for first few transactions
+    if (debugMode && transactionCount <= 3) {
+      console.log(`\n${colors.yellow}=== DEBUG: Raw Data Structure for Transaction #${transactionCount} ===${colors.reset}`);
+      inspectStructure(data, 'data', 4);
+      console.log(`${colors.yellow}=== END DEBUG ===${colors.reset}\n`);
     }
     
-    const slot = txData.slot;
-    const rawTx = txData.transaction;
-    const meta = txData.meta;
-    
-    // Extract and decode signature
+    // Try different paths to find the transaction data
+    let txData = null;
     let signature = 'N/A';
-    if (rawTx?.signatures && rawTx.signatures.length > 0) {
-      try {
-        // Signatures come as Buffer/Uint8Array
-        signature = bs58.encode(rawTx.signatures[0]);
-      } catch (e) {
-        console.error('Error decoding signature:', e.message);
+    let slot = 'N/A';
+    
+    // Path 1: data.transaction
+    if (data.transaction) {
+      txData = data.transaction;
+      slot = txData.slot || 'N/A';
+      
+      // Try to find signature in various locations
+      if (txData.signature) {
+        signature = tryDecodeSignature(txData.signature);
+      } else if (txData.transaction?.signatures?.[0]) {
+        signature = tryDecodeSignature(txData.transaction.signatures[0]);
+      } else if (txData.transaction?.signature) {
+        signature = tryDecodeSignature(txData.transaction.signature);
       }
     }
     
@@ -59,26 +97,61 @@ function logTransaction(data) {
     console.log(`${colors.yellow}Slot:${colors.reset} ${slot}`);
     console.log(`${colors.yellow}Time:${colors.reset} ${new Date().toISOString()}`);
     
-    // Parse message
-    const message = rawTx?.message;
+    // Check if we have the actual transaction data
+    if (!txData) {
+      console.log(`${colors.red}No transaction data found at expected path${colors.reset}`);
+      return;
+    }
+    
+    // Look for message in different possible locations
+    let message = null;
+    if (txData.transaction?.message) {
+      message = txData.transaction.message;
+      console.log(`${colors.green}Found message at: txData.transaction.message${colors.reset}`);
+    } else if (txData.message) {
+      message = txData.message;
+      console.log(`${colors.green}Found message at: txData.message${colors.reset}`);
+    }
+    
     if (!message) {
       console.log(`${colors.red}No message found in transaction${colors.reset}`);
+      
+      // Show what fields are available in txData
+      if (debugMode) {
+        console.log(`${colors.yellow}Available fields in txData:${colors.reset}`, Object.keys(txData));
+        if (txData.transaction) {
+          console.log(`${colors.yellow}Available fields in txData.transaction:${colors.reset}`, Object.keys(txData.transaction));
+        }
+      }
       return;
     }
     
     // Decode account keys
     const accountKeys = [];
+    let accountKeysSource = null;
+    
     if (message.accountKeys) {
-      message.accountKeys.forEach((key) => {
+      accountKeysSource = message.accountKeys;
+    } else if (message.staticAccountKeys) {
+      accountKeysSource = message.staticAccountKeys;
+    } else if (message.accounts) {
+      accountKeysSource = message.accounts;
+    }
+    
+    if (accountKeysSource) {
+      console.log(`${colors.green}Found ${accountKeysSource.length} account keys${colors.reset}`);
+      accountKeysSource.forEach((key, idx) => {
         try {
-          // Account keys come as base64 encoded strings or buffers
-          if (typeof key === 'string') {
-            accountKeys.push(new PublicKey(Buffer.from(key, 'base64')).toBase58());
-          } else {
-            accountKeys.push(new PublicKey(key).toBase58());
+          let decoded = tryDecodePublicKey(key);
+          accountKeys.push(decoded);
+          
+          // Check if this is the MEV program
+          if (decoded === MEV_PROGRAM_ID && idx < 5) {
+            console.log(`${colors.magenta}MEV Program found at index ${idx}${colors.reset}`);
           }
         } catch (e) {
           accountKeys.push('Invalid key');
+          console.error(`Error decoding key at index ${idx}:`, e.message);
         }
       });
     }
@@ -107,91 +180,9 @@ function logTransaction(data) {
       });
     }
     
-    // Parse instructions
-    if (message.instructions && message.instructions.length > 0) {
-      console.log(`\n${colors.bright}${colors.blue}Instructions:${colors.reset}`);
-      message.instructions.forEach((ix, index) => {
-        const programId = accountKeys[ix.programIdIndex] || `Unknown (index: ${ix.programIdIndex})`;
-        console.log(`  [${index}] Program: ${programId}`);
-        
-        // Decode instruction data
-        if (ix.data) {
-          try {
-            let dataHex;
-            if (typeof ix.data === 'string') {
-              // Base64 encoded
-              dataHex = Buffer.from(ix.data, 'base64').toString('hex');
-            } else {
-              // Buffer or Uint8Array
-              dataHex = Buffer.from(ix.data).toString('hex');
-            }
-            console.log(`      Data: ${dataHex.substring(0, 64)}${dataHex.length > 64 ? '...' : ''}`);
-          } catch (e) {
-            console.log(`      Data: Unable to decode`);
-          }
-        }
-        
-        // Account indices
-        if (ix.accounts && ix.accounts.length > 0) {
-          const accountsList = ix.accounts.map(idx => `${idx}(${accountKeys[idx] ? accountKeys[idx].substring(0, 8) + '...' : 'unknown'})`);
-          console.log(`      Accounts: [${accountsList.join(', ')}]`);
-        }
-      });
-    }
-    
-    // Transaction metadata
-    if (meta) {
-      const status = meta.err || meta.errorInfo ? `${colors.red}Failed${colors.reset}` : `${colors.green}Success${colors.reset}`;
-      
-      console.log(`\n${colors.bright}${colors.blue}Transaction Result:${colors.reset}`);
-      console.log(`  Status: ${status}`);
-      
-      if (meta.err || meta.errorInfo) {
-        console.log(`  ${colors.red}Error:${colors.reset} ${JSON.stringify(meta.err || meta.errorInfo)}`);
-      }
-      
-      if (meta.fee) {
-        console.log(`  Fee: ${meta.fee} lamports`);
-      }
-      
-      if (meta.computeUnitsConsumed) {
-        console.log(`  Compute Units: ${meta.computeUnitsConsumed}`);
-      }
-      
-      // Balance changes
-      if (meta.preBalances && meta.postBalances) {
-        const balanceChanges = [];
-        meta.preBalances.forEach((preBalance, index) => {
-          const postBalance = meta.postBalances[index];
-          const change = postBalance - preBalance;
-          if (change !== 0) {
-            const pubkey = accountKeys[index] || `Account[${index}]`;
-            balanceChanges.push({ pubkey, change });
-          }
-        });
-        
-        if (balanceChanges.length > 0) {
-          console.log(`\n${colors.bright}${colors.blue}Balance Changes:${colors.reset}`);
-          balanceChanges.forEach(({ pubkey, change }) => {
-            const changeStr = change > 0 ? `+${change}` : `${change}`;
-            const changeColor = change > 0 ? colors.green : colors.red;
-            console.log(`  ${pubkey}: ${changeColor}${changeStr}${colors.reset} lamports`);
-          });
-        }
-      }
-      
-      // Log messages
-      if (meta.logMessages && meta.logMessages.length > 0) {
-        console.log(`\n${colors.bright}${colors.blue}Program Logs:${colors.reset}`);
-        meta.logMessages.forEach((log, index) => {
-          // Highlight MEV program logs
-          if (log.includes(MEV_PROGRAM_ID)) {
-            console.log(`  ${colors.magenta}[${index}] ${log}${colors.reset}`);
-          } else {
-            console.log(`  [${index}] ${log}`);
-          }
-        });
-      }
+    // After showing first few complete transactions, turn off debug mode
+    if (transactionCount >= 3) {
+      debugMode = false;
     }
     
     console.log(`${colors.bright}${colors.cyan}${'='.repeat(80)}${colors.reset}\n`);
@@ -199,25 +190,100 @@ function logTransaction(data) {
   } catch (error) {
     console.error(`${colors.red}Error processing transaction:${colors.reset}`, error.message);
     console.error(error.stack);
-    
-    // Debug output on first error
-    if (!global.errorLogged) {
-      console.log(`\n${colors.yellow}Debug - Raw data structure:${colors.reset}`);
-      try {
-        const debugData = JSON.stringify(data, (key, value) => {
-          if (value instanceof Uint8Array || value instanceof Buffer) {
-            return `[${value.constructor.name} length=${value.length}]`;
-          }
-          return value;
-        }, 2);
-        console.log(debugData.substring(0, 1000) + (debugData.length > 1000 ? '...' : ''));
-      } catch (e) {
-        console.log('Unable to stringify data for debugging');
-      }
-      global.errorLogged = true;
-    }
   }
 }
+
+/**
+ * Try to decode a signature from various formats
+ */
+function tryDecodeSignature(sig) {
+  try {
+    if (!sig) return 'N/A';
+    
+    // If it's already a string, return it
+    if (typeof sig === 'string') {
+      return sig;
+    }
+    
+    // If it's a Buffer or Uint8Array, encode it
+    if (sig instanceof Buffer || sig instanceof Uint8Array) {
+      return bs58.encode(sig);
+    }
+    
+    // If it's an array of numbers, convert to Uint8Array first
+    if (Array.isArray(sig)) {
+      return bs58.encode(new Uint8Array(sig));
+    }
+    
+    // Try to convert whatever it is to a buffer
+    return bs58.encode(Buffer.from(sig));
+  } catch (e) {
+    console.error('Signature decode error:', e.message);
+    return 'Unable to decode';
+  }
+}
+
+/**
+ * Try to decode a public key from various formats
+ */
+function tryDecodePublicKey(key) {
+  try {
+    if (!key) return 'N/A';
+    
+    // If it's already a string, assume it's base58
+    if (typeof key === 'string') {
+      // Try to validate it's a valid public key
+      new PublicKey(key);
+      return key;
+    }
+    
+    // If it's base64 encoded string in a buffer
+    if (key instanceof Buffer || key instanceof Uint8Array) {
+      return new PublicKey(key).toBase58();
+    }
+    
+    // If it's an array of numbers
+    if (Array.isArray(key)) {
+      return new PublicKey(new Uint8Array(key)).toBase58();
+    }
+    
+    // Try base64 decode
+    return new PublicKey(Buffer.from(key, 'base64')).toBase58();
+  } catch (e) {
+    return 'Invalid key';
+  }
+}
+
+/**
+ * Test if we're receiving any data at all
+ */
+let dataReceivedCount = 0;
+let lastDataReceivedTime = Date.now();
+
+function checkDataFlow() {
+  const now = Date.now();
+  const timeSinceLastData = (now - lastDataReceivedTime) / 1000;
+  
+  console.log(`\n${colors.yellow}=== Stream Health Check ===${colors.reset}`);
+  console.log(`Total data events received: ${dataReceivedCount}`);
+  console.log(`Transactions processed: ${transactionCount}`);
+  console.log(`Time since last data: ${timeSinceLastData.toFixed(1)}s`);
+  
+  if (dataReceivedCount === 0) {
+    console.log(`${colors.red}WARNING: No data received from stream!${colors.reset}`);
+    console.log(`Possible issues:`);
+    console.log(`- RPC endpoint might not have the MEV program indexed`);
+    console.log(`- The program ID might be incorrect`);
+    console.log(`- Network connectivity issues`);
+  } else if (transactionCount === 0) {
+    console.log(`${colors.yellow}Receiving data but no MEV transactions found${colors.reset}`);
+    console.log(`The MEV program might not be active right now`);
+  }
+  console.log(`${colors.yellow}===========================${colors.reset}\n`);
+}
+
+// Run health check every 30 seconds
+setInterval(checkDataFlow, 30000);
 
 /**
  * Handles the gRPC stream
@@ -233,21 +299,46 @@ async function handleStream(client, args) {
       stream.end();
     });
 
-    stream.on("end", resolve);
-    stream.on("close", resolve);
+    stream.on("end", () => {
+      console.log(`${colors.yellow}Stream ended${colors.reset}`);
+      resolve();
+    });
+    
+    stream.on("close", () => {
+      console.log(`${colors.yellow}Stream closed${colors.reset}`);
+      resolve();
+    });
   });
 
-  // Handle incoming transaction data
+  // Handle incoming data
   stream.on("data", (data) => {
+    dataReceivedCount++;
+    lastDataReceivedTime = Date.now();
+    
+    // Log every 100th data event to show we're receiving data
+    if (dataReceivedCount % 100 === 0) {
+      console.log(`${colors.cyan}[Stream Active] Received ${dataReceivedCount} data events${colors.reset}`);
+    }
+    
+    // Check if this is a transaction
     if (data?.transaction) {
       logTransaction(data);
+    } else if (dataReceivedCount <= 5) {
+      // Show structure of non-transaction data for debugging
+      console.log(`${colors.yellow}Received non-transaction data. Structure:${colors.reset}`);
+      console.log(Object.keys(data));
     }
   });
 
   // Send the subscription request
   await new Promise((resolve, reject) => {
     stream.write(args, (err) => {
-      err ? reject(err) : resolve();
+      if (err) {
+        reject(err);
+      } else {
+        console.log(`${colors.green}✓ Subscription request sent successfully${colors.reset}`);
+        resolve();
+      }
     });
   }).catch((err) => {
     console.error(`${colors.red}Failed to send subscription request:${colors.reset}`, err);
@@ -257,6 +348,7 @@ async function handleStream(client, args) {
   console.log(`${colors.green}✓ Connected to gRPC stream${colors.reset}`);
   console.log(`${colors.cyan}Monitoring MEV Program: ${MEV_PROGRAM_ID}${colors.reset}`);
   console.log(`${colors.yellow}Commitment Level: PROCESSED${colors.reset}`);
+  console.log(`${colors.magenta}Debug mode enabled for first 3 transactions${colors.reset}`);
   console.log(`${colors.magenta}Waiting for transactions...${colors.reset}\n`);
 
   // Wait for the stream to close
@@ -290,7 +382,6 @@ async function subscribeCommand(client, args) {
     }
 
     // Initialize Yellowstone gRPC client
-    // X_TOKEN is optional - some gRPC endpoints don't require authentication
     const client = new Client(
       process.env.GRPC_URL,
       process.env.X_TOKEN || undefined,
@@ -320,10 +411,11 @@ async function subscribeCommand(client, args) {
       commitment: CommitmentLevel.PROCESSED,
     };
 
-    console.log(`${colors.bright}${colors.green}MEV Transaction Monitor v1.1${colors.reset}`);
+    console.log(`${colors.bright}${colors.green}MEV Transaction Monitor v1.2 (Debug Mode)${colors.reset}`);
     console.log(`${colors.cyan}Connecting to gRPC stream...${colors.reset}`);
     console.log(`${colors.yellow}GRPC URL:${colors.reset} ${process.env.GRPC_URL}`);
-    console.log(`${colors.yellow}Authentication:${colors.reset} ${process.env.X_TOKEN ? 'Enabled' : 'Disabled'}\n`);
+    console.log(`${colors.yellow}Authentication:${colors.reset} ${process.env.X_TOKEN ? 'Enabled' : 'Disabled'}`);
+    console.log(`${colors.yellow}Program Filter:${colors.reset} ${MEV_PROGRAM_ID}\n`);
 
     // Start the subscription
     await subscribeCommand(client, req);
