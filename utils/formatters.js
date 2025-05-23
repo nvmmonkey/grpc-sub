@@ -8,9 +8,35 @@ const { MEV_PROGRAM_ID } = require('./constants');
 function formatAccountKeys(accountKeys, header, loadedAddresses) {
   const formattedKeys = [];
   
+  // Debug logging
+  if (process.env.DEBUG === 'true') {
+    console.log(`\n${colors.dim}[DEBUG] formatAccountKeys: Processing ${accountKeys?.length || 0} account keys${colors.reset}`);
+  }
+  
   // First, process the static account keys
+  if (!accountKeys || !Array.isArray(accountKeys)) {
+    console.warn(`${colors.yellow}Warning: accountKeys is not an array${colors.reset}`, accountKeys);
+    return formattedKeys;
+  }
+  
   accountKeys.forEach((key, index) => {
+    if (!key) {
+      console.warn(`${colors.yellow}Warning: Account key at index ${index} is null/undefined${colors.reset}`);
+      // Still add a placeholder to maintain correct indices
+      formattedKeys.push({
+        index,
+        pubkey: `Missing account at index ${index}`,
+        accountType: [`${colors.red}missing${colors.reset}`],
+        isMev: false
+      });
+      return;
+    }
+    
     const pubkey = decodePublicKey(key);
+    
+    if (process.env.DEBUG === 'true' && index === 10) {
+      console.log(`${colors.dim}[DEBUG] Account at index 10: ${pubkey}${colors.reset}`);
+    }
     
     // Determine account type
     let accountType = [];
@@ -39,6 +65,10 @@ function formatAccountKeys(accountKeys, header, loadedAddresses) {
   // Then, add loaded addresses from ALTs if available
   if (loadedAddresses) {
     let currentIndex = accountKeys.length;
+    
+    if (process.env.DEBUG === 'true') {
+      console.log(`${colors.dim}[DEBUG] Adding ALT addresses starting at index ${currentIndex}${colors.reset}`);
+    }
     
     // Process writable addresses
     if (loadedAddresses.writable && loadedAddresses.writable.length > 0) {
@@ -77,6 +107,10 @@ function formatAccountKeys(accountKeys, header, loadedAddresses) {
         });
       });
     }
+  }
+  
+  if (process.env.DEBUG === 'true') {
+    console.log(`${colors.dim}[DEBUG] Total formatted keys: ${formattedKeys.length}${colors.reset}`);
   }
   
   return formattedKeys;

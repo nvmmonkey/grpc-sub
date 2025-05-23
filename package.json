@@ -9,7 +9,10 @@
     "view": "node view-saved.js",
     "analyze": "node analyze-accounts.js",
     "test-rpc": "node test-rpc.js",
-    "check-alts": "node check-alts.js"
+    "check-alts": "node check-alts.js",
+    "debug-accounts": "node debug-accounts.js",
+    "test-decode": "node test-decode.js",
+    "verify": "node verify-accounts.js"
   },
   "keywords": [
     "solana",

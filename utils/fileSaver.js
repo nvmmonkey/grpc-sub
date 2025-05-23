@@ -65,23 +65,6 @@ function saveTransactionDetails(transactionData) {
 
 /**
  * Extract transaction details for saving
- * 
- * Example saved structure:
- * {
- *   "number": 1,
- *   "timestamp": "2024-01-01T00:00:00.000Z",
- *   "signature": "abc123...",
- *   "slot": 123456,
- *   "status": "success",
- *   "instructions": [{
- *     "programId": "MEViEnscUm6tsQRoGd9h6nLQaQspKj7DB2M5FwM3Xvz",
- *     "data": "0f00000000000000001500000000000000010000",
- *     "accounts": [0, 5, 10],
- *     "accountKeys": [{"index": 0, "pubkey": "..."}]
- *   }],
- *   "balanceChanges": [...],
- *   "logs": [...]
- * }
  */
 async function extractTransactionDetails(data, transactionCount) {
   const txData = data.transaction;
@@ -107,6 +90,16 @@ async function extractTransactionDetails(data, transactionCount) {
   if (tx && tx.message && tx.message.accountKeys) {
     const { formatAccountKeys } = require('./formatters');
     
+    // Debug logging for account keys
+    if (process.env.DEBUG === 'true') {
+      console.log(`${colors.dim}[DEBUG] Raw account keys count: ${tx.message.accountKeys.length}${colors.reset}`);
+      
+      // Check account 10 specifically
+      if (tx.message.accountKeys[10]) {
+        console.log(`${colors.dim}[DEBUG] Raw account key at index 10:${colors.reset}`, tx.message.accountKeys[10]);
+      }
+    }
+    
     // Try to resolve loaded addresses from ALTs
     let loadedAddresses = meta?.loadedAddresses;
     
@@ -124,6 +117,19 @@ async function extractTransactionDetails(data, transactionCount) {
     // Format all accounts including those from ALTs
     const allAccounts = formatAccountKeys(tx.message.accountKeys, tx.message.header, loadedAddresses);
     
+    // Debug logging
+    if (process.env.DEBUG === 'true') {
+      console.log(`${colors.dim}[DEBUG] Formatted accounts count: ${allAccounts.length}${colors.reset}`);
+      
+      // Check if we have account 10
+      const account10 = allAccounts.find(acc => acc.index === 10);
+      if (account10) {
+        console.log(`${colors.dim}[DEBUG] Account 10 after formatting: ${account10.pubkey}${colors.reset}`);
+      } else {
+        console.log(`${colors.dim}[DEBUG] Account 10 is missing after formatting!${colors.reset}`);
+      }
+    }
+    
     details.accounts = allAccounts.map(({ index, pubkey, accountType, isMev }) => {
       const isSigner = accountType.some(type => type.includes('signer'));
       const isWritable = accountType.some(type => type.includes('writable'));
@@ -140,6 +146,18 @@ async function extractTransactionDetails(data, transactionCount) {
         accountType: accountType
       };
     });
+    
+    // Verify we have all accounts
+    if (process.env.DEBUG === 'true') {
+      console.log(`${colors.dim}[DEBUG] Final accounts array length: ${details.accounts.length}${colors.reset}`);
+      
+      // Check for gaps in indices
+      for (let i = 0; i < details.accounts.length; i++) {
+        if (!details.accounts.find(acc => acc.index === i)) {
+          console.log(`${colors.yellow}[DEBUG] Missing account at index ${i}!${colors.reset}`);
+        }
+      }
+    }
     
     // Check for signers
     details.signers = allAccounts
