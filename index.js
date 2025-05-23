@@ -20,144 +20,181 @@ const colors = {
 };
 
 /**
+ * Safely encode bytes to base58
+ */
+function safeEncode(data) {
+  try {
+    if (!data) return 'N/A';
+    if (typeof data === 'string') return data;
+    if (data instanceof Buffer || data instanceof Uint8Array) {
+      return bs58.encode(data);
+    }
+    // Try to convert to buffer if possible
+    return bs58.encode(Buffer.from(data));
+  } catch (e) {
+    return 'Unable to decode';
+  }
+}
+
+/**
  * Formats and logs transaction details
  */
-function logTransaction(txData) {
-  const tx = txData.transaction;
-  const meta = tx.meta;
-  const slot = tx.slot;
-  // Handle signature - it might be a Buffer or Uint8Array
-  let signature;
+function logTransaction(data) {
   try {
-    if (tx.signature instanceof Buffer) {
-      signature = bs58.encode(tx.signature);
-    } else if (tx.signature instanceof Uint8Array) {
-      signature = bs58.encode(tx.signature);
-    } else if (typeof tx.signature === 'string') {
-      signature = tx.signature;
-    } else {
-      // If signature is in a different format, try to convert it
-      signature = bs58.encode(Buffer.from(tx.signature));
-    }
-  } catch (e) {
-    signature = 'Unable to decode signature';
-    console.error('Signature decode error:', e.message);
-  }
-  
-  console.log(`${colors.bright}${colors.cyan}${'='.repeat(80)}${colors.reset}`);
-  console.log(`${colors.bright}${colors.green}[MEV Transaction Detected]${colors.reset}`);
-  console.log(`${colors.bright}${colors.cyan}${'='.repeat(80)}${colors.reset}`);
-  
-  console.log(`${colors.yellow}Signature:${colors.reset} ${signature}`);
-  console.log(`${colors.yellow}Slot:${colors.reset} ${slot}`);
-  console.log(`${colors.yellow}Time:${colors.reset} ${new Date().toISOString()}`);
-  
-  // Parse the transaction message
-  const message = tx.transaction.message;
-  const accountKeys = message.accountKeys;
-  
-  console.log(`\n${colors.bright}${colors.blue}Account Keys:${colors.reset}`);
-  accountKeys.forEach((key, index) => {
-    let pubkey;
-    try {
-      if (key instanceof Buffer || key instanceof Uint8Array) {
-        pubkey = bs58.encode(key);
-      } else if (typeof key === 'string') {
-        pubkey = key;
-      } else {
-        pubkey = bs58.encode(Buffer.from(key));
+    console.log(`${colors.bright}${colors.cyan}${'='.repeat(80)}${colors.reset}`);
+    console.log(`${colors.bright}${colors.green}[MEV Transaction Detected]${colors.reset}`);
+    console.log(`${colors.bright}${colors.cyan}${'='.repeat(80)}${colors.reset}`);
+    
+    // Extract transaction data based on Yellowstone gRPC structure
+    const txData = data.transaction;
+    
+    // Basic transaction info
+    const slot = txData.slot || 'N/A';
+    const signature = safeEncode(txData.signature);
+    
+    console.log(`${colors.yellow}Signature:${colors.reset} ${signature}`);
+    console.log(`${colors.yellow}Slot:${colors.reset} ${slot}`);
+    console.log(`${colors.yellow}Time:${colors.reset} ${new Date().toISOString()}`);
+    
+    // Check if we have transaction details
+    if (txData.transaction) {
+      const tx = txData.transaction;
+      
+      // Handle versioned or legacy transaction
+      const message = tx.message || tx;
+      
+      // Extract account keys
+      let accountKeys = [];
+      if (message.accountKeys) {
+        accountKeys = message.accountKeys;
+      } else if (message.staticAccountKeys) {
+        accountKeys = message.staticAccountKeys;
+      } else if (Array.isArray(message.accounts)) {
+        accountKeys = message.accounts;
       }
-    } catch (e) {
-      pubkey = 'Unable to decode key';
-    }
-    const isWritable = index < message.header.numRequiredSignatures - message.header.numReadonlySignedAccounts ||
-                      (index >= message.header.numRequiredSignatures && 
-                       index < accountKeys.length - message.header.numReadonlyUnsignedAccounts);
-    const isSigner = index < message.header.numRequiredSignatures;
-    
-    let accountType = [];
-    if (isSigner) accountType.push(`${colors.green}signer${colors.reset}`);
-    if (isWritable) accountType.push(`${colors.yellow}writable${colors.reset}`);
-    if (pubkey === MEV_PROGRAM_ID) accountType.push(`${colors.magenta}MEV Program${colors.reset}`);
-    
-    console.log(`  [${index}] ${pubkey} ${accountType.length > 0 ? `(${accountType.join(', ')})` : ''}`);
-  });
-  
-  // Log instructions
-  console.log(`\n${colors.bright}${colors.blue}Instructions:${colors.reset}`);
-  message.instructions.forEach((ix, index) => {
-    let programId;
-    try {
-      const programKey = accountKeys[ix.programIdIndex];
-      if (programKey instanceof Buffer || programKey instanceof Uint8Array) {
-        programId = bs58.encode(programKey);
-      } else if (typeof programKey === 'string') {
-        programId = programKey;
-      } else {
-        programId = bs58.encode(Buffer.from(programKey));
-      }
-    } catch (e) {
-      programId = 'Unable to decode program ID';
-    }
-    console.log(`  [${index}] Program: ${programId}`);
-    if (ix.data && ix.data.length > 0) {
-      const dataHex = Buffer.from(ix.data).toString('hex');
-      console.log(`      Data: ${dataHex.substring(0, 64)}${dataHex.length > 64 ? '...' : ''}`);
-    }
-    if (ix.accounts && ix.accounts.length > 0) {
-      console.log(`      Accounts: [${ix.accounts.join(', ')}]`);
-    }
-  });
-  
-  // Log transaction result
-  if (meta) {
-    const status = meta.err ? `${colors.red}Failed${colors.reset}` : `${colors.green}Success${colors.reset}`;
-    console.log(`\n${colors.bright}${colors.blue}Status:${colors.reset} ${status}`);
-    
-    if (meta.err) {
-      console.log(`${colors.red}Error:${colors.reset} ${JSON.stringify(meta.err)}`);
-    }
-    
-    console.log(`${colors.yellow}Fee:${colors.reset} ${meta.fee} lamports`);
-    console.log(`${colors.yellow}Compute Units:${colors.reset} ${meta.computeUnitsConsumed || 'N/A'}`);
-    
-    // Log balance changes
-    if (meta.preBalances && meta.postBalances) {
-      console.log(`\n${colors.bright}${colors.blue}Balance Changes:${colors.reset}`);
-      meta.preBalances.forEach((preBalance, index) => {
-        const postBalance = meta.postBalances[index];
-        const change = postBalance - preBalance;
-        if (change !== 0) {
-          let pubkey;
-        try {
-          const key = accountKeys[index];
-          if (key instanceof Buffer || key instanceof Uint8Array) {
-            pubkey = bs58.encode(key);
-          } else if (typeof key === 'string') {
-            pubkey = key;
-          } else {
-            pubkey = bs58.encode(Buffer.from(key));
+      
+      if (accountKeys.length > 0) {
+        console.log(`\n${colors.bright}${colors.blue}Account Keys:${colors.reset}`);
+        accountKeys.forEach((key, index) => {
+          const pubkey = safeEncode(key);
+          
+          // Try to determine account properties
+          let accountType = [];
+          if (message.header) {
+            const isWritable = index < message.header.numRequiredSignatures - message.header.numReadonlySignedAccounts ||
+                              (index >= message.header.numRequiredSignatures && 
+                               index < accountKeys.length - message.header.numReadonlyUnsignedAccounts);
+            const isSigner = index < message.header.numRequiredSignatures;
+            
+            if (isSigner) accountType.push(`${colors.green}signer${colors.reset}`);
+            if (isWritable) accountType.push(`${colors.yellow}writable${colors.reset}`);
           }
-        } catch (e) {
-          pubkey = 'Unable to decode key';
-        }
-          const changeStr = change > 0 ? `+${change}` : `${change}`;
-          const changeColor = change > 0 ? colors.green : colors.red;
-          console.log(`  ${pubkey}: ${changeColor}${changeStr}${colors.reset} lamports`);
-        }
-      });
+          
+          if (pubkey === MEV_PROGRAM_ID) accountType.push(`${colors.magenta}MEV Program${colors.reset}`);
+          
+          console.log(`  [${index}] ${pubkey} ${accountType.length > 0 ? `(${accountType.join(', ')})` : ''}`);
+        });
+      }
+      
+      // Extract instructions
+      const instructions = message.instructions || message.compiledInstructions || [];
+      if (instructions.length > 0) {
+        console.log(`\n${colors.bright}${colors.blue}Instructions:${colors.reset}`);
+        instructions.forEach((ix, index) => {
+          let programId = 'Unknown';
+          
+          // Get program ID
+          if (typeof ix.programIdIndex === 'number' && accountKeys[ix.programIdIndex]) {
+            programId = safeEncode(accountKeys[ix.programIdIndex]);
+          } else if (ix.programId) {
+            programId = safeEncode(ix.programId);
+          }
+          
+          console.log(`  [${index}] Program: ${programId}`);
+          
+          // Instruction data
+          if (ix.data) {
+            const dataHex = Buffer.from(ix.data).toString('hex');
+            console.log(`      Data: ${dataHex.substring(0, 64)}${dataHex.length > 64 ? '...' : ''}`);
+          }
+          
+          // Account indices
+          if (ix.accountKeyIndexes || ix.accounts) {
+            const accounts = ix.accountKeyIndexes || ix.accounts;
+            console.log(`      Account Indices: [${accounts.join(', ')}]`);
+          }
+        });
+      }
     }
     
-    // Log logs
-    if (meta.logMessages && meta.logMessages.length > 0) {
-      console.log(`\n${colors.bright}${colors.blue}Logs:${colors.reset}`);
-      meta.logMessages.forEach((log, index) => {
-        console.log(`  [${index}] ${log}`);
-      });
+    // Transaction metadata
+    if (txData.meta) {
+      const meta = txData.meta;
+      const status = meta.err ? `${colors.red}Failed${colors.reset}` : `${colors.green}Success${colors.reset}`;
+      
+      console.log(`\n${colors.bright}${colors.blue}Status:${colors.reset} ${status}`);
+      
+      if (meta.err) {
+        console.log(`${colors.red}Error:${colors.reset} ${JSON.stringify(meta.err)}`);
+      }
+      
+      if (meta.fee) {
+        console.log(`${colors.yellow}Fee:${colors.reset} ${meta.fee} lamports`);
+      }
+      
+      if (meta.computeUnitsConsumed) {
+        console.log(`${colors.yellow}Compute Units:${colors.reset} ${meta.computeUnitsConsumed}`);
+      }
+      
+      // Balance changes
+      if (meta.preBalances && meta.postBalances && txData.transaction) {
+        const accountKeys = txData.transaction.message?.accountKeys || 
+                           txData.transaction.message?.staticAccountKeys || 
+                           [];
+        
+        console.log(`\n${colors.bright}${colors.blue}Balance Changes:${colors.reset}`);
+        meta.preBalances.forEach((preBalance, index) => {
+          const postBalance = meta.postBalances[index];
+          const change = postBalance - preBalance;
+          if (change !== 0) {
+            const pubkey = accountKeys[index] ? safeEncode(accountKeys[index]) : `Account [${index}]`;
+            const changeStr = change > 0 ? `+${change}` : `${change}`;
+            const changeColor = change > 0 ? colors.green : colors.red;
+            console.log(`  ${pubkey}: ${changeColor}${changeStr}${colors.reset} lamports`);
+          }
+        });
+      }
+      
+      // Logs
+      if (meta.logMessages && meta.logMessages.length > 0) {
+        console.log(`\n${colors.bright}${colors.blue}Logs:${colors.reset}`);
+        meta.logMessages.forEach((log, index) => {
+          console.log(`  [${index}] ${log}`);
+        });
+      }
+    }
+    
+    console.log(`${colors.bright}${colors.cyan}${'='.repeat(80)}${colors.reset}\n`);
+    
+  } catch (error) {
+    console.error(`${colors.red}Error processing transaction:${colors.reset}`, error.message);
+    console.error(error.stack);
+    
+    // Log raw data for debugging
+    console.log(`${colors.yellow}Raw data structure:${colors.reset}`);
+    try {
+      // Create a simplified version for logging
+      const simplified = JSON.stringify(data, (key, value) => {
+        if (value instanceof Uint8Array || value instanceof Buffer) {
+          return `[${value.constructor.name} length=${value.length}]`;
+        }
+        return value;
+      }, 2);
+      console.log(simplified);
+    } catch (e) {
+      console.log('Unable to stringify raw data');
     }
   }
-  
-  console.log(`${colors.bright}${colors.cyan}${'='.repeat(80)}${colors.reset}\n`);
 }
 
 /**
