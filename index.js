@@ -77,11 +77,13 @@ function logTransaction(data) {
     const tx = txInfo.transaction;
     const meta = txInfo.meta;
     
+    // Initialize accountKeys at the top level
+    let accountKeys = [];
+    
     if (tx && tx.message) {
       const message = tx.message;
       
       // Decode account keys
-      const accountKeys = [];
       if (message.accountKeys) {
         console.log(`\n${colors.bright}${colors.blue}Account Keys (${message.accountKeys.length} total):${colors.reset}`);
         
@@ -145,19 +147,25 @@ function logTransaction(data) {
           
           // Show accounts used
           if (ix.accounts && ix.accounts.length > 0) {
-            const accountsList = ix.accounts.slice(0, 5).map(idx => {
+            const accountsInfo = [];
+            
+            // Process first 5 accounts
+            for (let i = 0; i < Math.min(5, ix.accounts.length); i++) {
+              const idx = ix.accounts[i];
               const key = accountKeys[idx];
               if (key) {
-                return `[${idx}] ${key.substring(0, 8)}...`;
+                accountsInfo.push(`[${idx}] ${key.substring(0, 8)}...`);
+              } else {
+                accountsInfo.push(`[${idx}]`);
               }
-              return `[${idx}]`;
-            });
-            
-            if (ix.accounts.length > 5) {
-              accountsList.push(`+${ix.accounts.length - 5} more`);
             }
             
-            console.log(`      Accounts: ${accountsList.join(', ')}`);
+            // Add "more" indicator if needed
+            if (ix.accounts.length > 5) {
+              accountsInfo.push(`+${ix.accounts.length - 5} more`);
+            }
+            
+            console.log(`      Accounts: ${accountsInfo.join(', ')}`);
           }
         });
       }
@@ -198,7 +206,7 @@ function logTransaction(data) {
       }
       
       // Balance changes
-      if (meta.preBalances && meta.postBalances && tx && tx.message && tx.message.accountKeys) {
+      if (meta.preBalances && meta.postBalances && accountKeys.length > 0) {
         const significantChanges = [];
         
         meta.preBalances.forEach((preBalance, index) => {
@@ -396,7 +404,7 @@ async function subscribeCommand(client, args) {
       commitment: CommitmentLevel.PROCESSED,
     };
 
-    console.log(`${colors.bright}${colors.green}MEV Transaction Monitor v2.0${colors.reset}`);
+    console.log(`${colors.bright}${colors.green}MEV Transaction Monitor v2.1${colors.reset}`);
     console.log(`${colors.cyan}Connecting to gRPC stream...${colors.reset}`);
     console.log(`${colors.yellow}GRPC URL:${colors.reset} ${process.env.GRPC_URL}`);
     console.log(`${colors.yellow}Authentication:${colors.reset} ${process.env.X_TOKEN ? 'Enabled' : 'Disabled'}`);
