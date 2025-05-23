@@ -150,10 +150,7 @@ function parseAndLogTransaction(data, transactionCount, options = {}) {
   console.log(`${colors.yellow}Index:${colors.reset} ${txInfo.index}`);
   console.log(`${colors.yellow}Time:${colors.reset} ${new Date().toISOString()}`);
   
-  // Process transaction content
-  const tx = txInfo.transaction;
-  const meta = txInfo.meta;
-  
+  // Continue processing with already declared tx and meta variables
   if (tx && tx.message) {
     const message = tx.message;
     
