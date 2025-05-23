@@ -48,6 +48,23 @@ function saveTransactionDetails(transactionData) {
 
 /**
  * Extract transaction details for saving
+ * 
+ * Example saved structure:
+ * {
+ *   "number": 1,
+ *   "timestamp": "2024-01-01T00:00:00.000Z",
+ *   "signature": "abc123...",
+ *   "slot": 123456,
+ *   "status": "success",
+ *   "instructions": [{
+ *     "programId": "MEViEnscUm6tsQRoGd9h6nLQaQspKj7DB2M5FwM3Xvz",
+ *     "data": "0f00000000000000001500000000000000010000",
+ *     "accounts": [0, 5, 10],
+ *     "accountKeys": [{"index": 0, "pubkey": "..."}]
+ *   }],
+ *   "balanceChanges": [...],
+ *   "logs": [...]
+ * }
  */
 function extractTransactionDetails(data, transactionCount) {
   const txData = data.transaction;
@@ -90,21 +107,55 @@ function extractTransactionDetails(data, transactionCount) {
   
   // Process instructions if available
   if (tx && tx.message && tx.message.instructions) {
+    const { decodeInstructionData } = require('./decoders');
+    
     details.instructions = tx.message.instructions.map((ix, idx) => {
       const programId = details.accounts?.[ix.programIdIndex]?.pubkey || `Unknown`;
+      const { hex, length } = decodeInstructionData(ix.data);
+      
       return {
         index: idx,
         programId,
+        programIdIndex: ix.programIdIndex,
         isMevInstruction: programId === require('./constants').MEV_PROGRAM_ID,
-        dataLength: ix.data ? (typeof ix.data === 'string' ? 
-          Buffer.from(ix.data, 'base64').length : 
-          ix.data.length) : 0,
-        accountsCount: ix.accounts?.length || 0
+        data: hex,
+        dataBase64: typeof ix.data === 'string' ? ix.data : Buffer.from(ix.data).toString('base64'),
+        dataLength: length,
+        accounts: ix.accounts || [],
+        accountsCount: ix.accounts?.length || 0,
+        // Add readable account references
+        accountKeys: ix.accounts?.map(accIdx => ({
+          index: accIdx,
+          pubkey: details.accounts?.[accIdx]?.pubkey || 'Unknown'
+        })) || []
       };
     });
     
     // Count MEV instructions
     details.mevInstructionCount = details.instructions.filter(ix => ix.isMevInstruction).length;
+  }
+  
+  // Process inner instructions if available
+  if (meta && meta.innerInstructions && meta.innerInstructions.length > 0) {
+    details.innerInstructions = meta.innerInstructions.map(inner => ({
+      index: inner.index,
+      instructions: inner.instructions.map(innerIx => {
+        const programId = details.accounts?.[innerIx.programIdIndex]?.pubkey || `Unknown`;
+        const { hex, length } = require('./decoders').decodeInstructionData(innerIx.data);
+        
+        return {
+          programId,
+          programIdIndex: innerIx.programIdIndex,
+          data: hex,
+          dataLength: length,
+          accounts: innerIx.accounts || [],
+          accountKeys: innerIx.accounts?.map(accIdx => ({
+            index: accIdx,
+            pubkey: details.accounts?.[accIdx]?.pubkey || 'Unknown'
+          })) || []
+        };
+      })
+    }));
   }
   
   // Balance changes
@@ -129,10 +180,22 @@ function extractTransactionDetails(data, transactionCount) {
   details.hasTokenTransfers = meta?.postTokenBalances && meta.postTokenBalances.length > 0;
   details.tokenTransferCount = meta?.postTokenBalances?.length || 0;
   
-  // Logs summary
+  // Logs summary and details
   if (meta?.logMessages) {
     details.logCount = meta.logMessages.length;
     details.hasMevLogs = meta.logMessages.some(log => 
+      log.includes(require('./constants').MEV_PROGRAM_ID) || 
+      log.includes('Program log: MEV')
+    );
+    
+    // Include actual logs (limit to prevent huge files)
+    details.logs = meta.logMessages.slice(0, 50); // First 50 logs
+    if (meta.logMessages.length > 50) {
+      details.logs.push(`... and ${meta.logMessages.length - 50} more logs`);
+    }
+    
+    // Separate MEV logs
+    details.mevLogs = meta.logMessages.filter(log => 
       log.includes(require('./constants').MEV_PROGRAM_ID) || 
       log.includes('Program log: MEV')
     );
