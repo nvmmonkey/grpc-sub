@@ -7,6 +7,10 @@ const bs58 = require("bs58");
 // MEV Program ID to monitor
 const MEV_PROGRAM_ID = "MEViEnscUm6tsQRoGd9h6nLQaQspKj7DB2M5FwM3Xvz";
 
+// Global counter for transactions
+let transactionCount = 0;
+let emptyTransactionCount = 0;
+
 // Color codes for console output
 const colors = {
   reset: '\x1b[0m',
@@ -41,16 +45,50 @@ function safeEncode(data) {
  */
 function logTransaction(data) {
   try {
-    console.log(`${colors.bright}${colors.cyan}${'='.repeat(80)}${colors.reset}`);
-    console.log(`${colors.bright}${colors.green}[MEV Transaction Detected]${colors.reset}`);
-    console.log(`${colors.bright}${colors.cyan}${'='.repeat(80)}${colors.reset}`);
+    transactionCount++;
     
     // Extract transaction data based on Yellowstone gRPC structure
     const txData = data.transaction;
     
+    // The signature might be at the root level of transaction
+    let signature = 'N/A';
+    if (data.signature) {
+      signature = safeEncode(data.signature);
+    } else if (txData.signature) {
+      signature = safeEncode(txData.signature);
+    } else if (txData.transaction?.signatures?.[0]) {
+      signature = safeEncode(txData.transaction.signatures[0]);
+    }
+    
     // Basic transaction info
-    const slot = txData.slot || 'N/A';
-    const signature = safeEncode(txData.signature);
+    const slot = txData.slot || data.slot || 'N/A';
+    
+    // If we don't have meaningful data, just count it
+    if (signature === 'N/A' && (!txData.transaction || !txData.meta)) {
+      emptyTransactionCount++;
+      // Only show summary every 10 empty transactions
+      if (emptyTransactionCount % 10 === 0) {
+        console.log(`${colors.yellow}[Summary] Received ${emptyTransactionCount} transactions without details (slot: ${slot})${colors.reset}`);
+      }
+      return;
+    }
+    
+    console.log(`${colors.bright}${colors.cyan}${'='.repeat(80)}${colors.reset}`);
+    console.log(`${colors.bright}${colors.green}[MEV Transaction Detected #${transactionCount}]${colors.reset}`);
+    console.log(`${colors.bright}${colors.cyan}${'='.repeat(80)}${colors.reset}`);
+    
+    // Debug: Let's see what we're actually receiving (only for first transaction with data)
+    if (!global.debugLogged && (signature !== 'N/A' || txData.transaction)) {
+      console.log(`${colors.yellow}Debug - Full data structure:${colors.reset}`);
+      const debugData = JSON.stringify(data, (key, value) => {
+        if (value instanceof Uint8Array || value instanceof Buffer) {
+          return `[${value.constructor.name} length=${value.length}]`;
+        }
+        return value;
+      }, 2);
+      console.log(debugData.substring(0, 2000) + (debugData.length > 2000 ? '...' : ''));
+      global.debugLogged = true;
+    }
     
     console.log(`${colors.yellow}Signature:${colors.reset} ${signature}`);
     console.log(`${colors.yellow}Slot:${colors.reset} ${slot}`);
@@ -233,7 +271,9 @@ async function handleStream(client, args) {
   });
 
   console.log(`${colors.green}✓ Connected to gRPC stream${colors.reset}`);
-  console.log(`${colors.cyan}Monitoring MEV Program: ${MEV_PROGRAM_ID}${colors.reset}\n`);
+  console.log(`${colors.cyan}Monitoring MEV Program: ${MEV_PROGRAM_ID}${colors.reset}`);
+  console.log(`${colors.yellow}Commitment Level: PROCESSED${colors.reset}`);
+  console.log(`${colors.magenta}Waiting for transactions...${colors.reset}\n`);
 
   // Wait for the stream to close
   await streamClosed;
@@ -293,11 +333,13 @@ async function subscribeCommand(client, args) {
       entry: {},
       accountsDataSlice: [],
       ping: undefined,
-      commitment: CommitmentLevel.CONFIRMED,
+      commitment: CommitmentLevel.PROCESSED,
     };
 
-    console.log(`${colors.bright}${colors.green}MEV Transaction Monitor${colors.reset}`);
-    console.log(`${colors.cyan}Connecting to gRPC stream...${colors.reset}\n`);
+    console.log(`${colors.bright}${colors.green}MEV Transaction Monitor v1.0${colors.reset}`);
+    console.log(`${colors.cyan}Connecting to gRPC stream...${colors.reset}`);
+    console.log(`${colors.yellow}GRPC URL:${colors.reset} ${process.env.GRPC_URL}`);
+    console.log(`${colors.yellow}Authentication:${colors.reset} ${process.env.X_TOKEN ? 'Enabled' : 'Disabled'}\n`);
 
     // Start the subscription
     await subscribeCommand(client, req);
