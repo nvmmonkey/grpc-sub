@@ -24,7 +24,7 @@ let targetSigners = [];
 /**
  * Handle incoming transaction data
  */
-function handleTransactionData(data) {
+async function handleTransactionData(data) {
   if (data?.transaction) {
     try {
       transactionCount++;
@@ -34,14 +34,14 @@ function handleTransactionData(data) {
         targetSigners
       };
       
-      const wasLogged = parseAndLogTransaction(data, displayedCount + 1, options);
+      const wasLogged = await parseAndLogTransaction(data, displayedCount + 1, options);
       
       if (wasLogged) {
         displayedCount++;
         
         // Save transaction if in save mode
         if (filterMode === 'save') {
-          const transactionDetails = extractTransactionDetails(data, displayedCount);
+          const transactionDetails = await extractTransactionDetails(data, displayedCount);
           const currentSavedCount = saveTransactionDetails(transactionDetails);
           
           if (currentSavedCount > 0) {

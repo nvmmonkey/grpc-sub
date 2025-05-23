@@ -2,6 +2,10 @@
   "lookupTables": {
     "D1ZN9Wj1fRSUQfCjhvnu1hqDMT7hzjzBBpi12nVniYD6": "Jupiter v6 ALT 1",
     "JCRGumoE9Qi5BBgULTgdgTLjSgkCMSbF62ZZfGs84JeU": "Jupiter v6 ALT 2",
+    "HFqU5x63VTqvQss8hp11i4wVV8bD44PvwucfZ2bU7gRe": "Raydium Authority V4",
+    "DfXygSm4jCyNCybVYYK6DwvWqjKee8pbDmJGcLWNDXjh": "Meteora DLMM Program",
+    "Eo7WjKq67rjJQSZxS6z3YkapzY3eMj6Xy8X5EQVn5UaB": "Meteora Pools Program",
+    "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo": "Meteora Multi-Token Pools",
     "Gz3kZ2x5yreAQ7KvLZF2YyQRvUQGJm5cSvHpndFdLfhj": "Jupiter v6 ALT 3"
   },
   "programs": {

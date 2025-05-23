@@ -27,6 +27,7 @@ grpc-sub/
 - **Interactive Menu System**: Choose between different monitoring modes
 - **Raw Subscription Mode**: Monitor all MEV program transactions
 - **Signer Filter Mode**: Monitor only transactions from specific signers
+- **Address Lookup Table (ALT) Resolution**: Automatically resolves accounts from ALTs using RPC
 - Real-time transaction monitoring for MEV program `MEViEnscUm6tsQRoGd9h6nLQaQspKj7DB2M5FwM3Xvz`
 - Detailed transaction logging with color-coded output
 - Automatic reconnection on stream errors
@@ -60,7 +61,12 @@ copy .env.example .env
 ```
 GRPC_URL=your_grpc_url_here
 X_TOKEN=your_access_token_here  # Optional - only if your endpoint requires authentication
+RPC_URL=https://api.mainnet-beta.solana.com  # Optional - for Address Lookup Table resolution
 ```
+
+**Note:** The `RPC_URL` is optional but highly recommended. It enables automatic resolution of Address Lookup Tables (ALTs), which will show actual account addresses instead of "Unknown" for accounts loaded from ALTs. You can use:
+- Public endpoints: `https://api.mainnet-beta.solana.com` or `https://api.devnet.solana.com`
+- Your own RPC endpoint (e.g., QuickNode, Helius, etc.)
 
 ## Configuration
 

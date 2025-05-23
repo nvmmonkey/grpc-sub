@@ -4,6 +4,17 @@ const { formatAccountKeys, displayAccountKeys, displayBalanceChanges, displayPro
 const { MEV_PROGRAM_ID, MAX_COMPUTE_UNITS } = require('./constants');
 const { hasTargetSigner } = require('./signerFilter');
 const { getAccountName, formatAccountDisplay } = require('./accountIdentifier');
+const { resolveLoadedAddresses, resolveAccountsWithLookupTables } = require('./lookupTableResolver');
+const { Connection } = require('@solana/web3.js');
+
+// Initialize RPC connection if available
+let rpcConnection = null;
+if (process.env.RPC_URL) {
+  rpcConnection = new Connection(process.env.RPC_URL, 'confirmed');
+  console.log(`${colors.green}✓ RPC connection established for ALT resolution${colors.reset}`);
+} else {
+  console.log(`${colors.yellow}⚠ No RPC_URL configured - ALT resolution disabled${colors.reset}`);
+}
 
 /**
  * Process and display instruction details
@@ -158,7 +169,7 @@ function displayTransactionMeta(meta, formattedKeys) {
 /**
  * Main transaction parser and logger
  */
-function parseAndLogTransaction(data, transactionCount, options = {}) {
+async function parseAndLogTransaction(data, transactionCount, options = {}) {
   const { filterMode, targetSigners } = options;
   
   // Extract transaction data
@@ -175,6 +186,7 @@ function parseAndLogTransaction(data, transactionCount, options = {}) {
   
   // Early check for signer filter if in filtered mode
   if (filterMode === 'filtered' && tx && tx.message && tx.message.accountKeys) {
+    // For filtering, we don't need ALT resolution since signers are always in static accounts
     const formattedKeys = formatAccountKeys(tx.message.accountKeys, tx.message.header);
     const signerCheck = hasTargetSigner(formattedKeys, tx.message.header, targetSigners);
     
@@ -207,47 +219,28 @@ function parseAndLogTransaction(data, transactionCount, options = {}) {
     // Process account keys
     let formattedKeys = [];
     if (message.accountKeys) {
-      formattedKeys = formatAccountKeys(message.accountKeys, message.header);
+      // Try to resolve loaded addresses from ALTs
+      let loadedAddresses = meta?.loadedAddresses;
       
-      // Check if there are loaded addresses from address lookup tables
-      if (meta && meta.loadedAddresses) {
-        let additionalAccounts = [];
-        let currentIndex = formattedKeys.length;
-        const writableCount = meta.loadedAddresses.writable?.length || 0;
-        const readonlyCount = meta.loadedAddresses.readonly?.length || 0;
-        
+      // If no loaded addresses in meta and we have RPC connection, try to resolve from ALTs
+      if (!loadedAddresses && rpcConnection) {
+        try {
+          loadedAddresses = await resolveLoadedAddresses(tx, meta, rpcConnection);
+        } catch (error) {
+          console.warn(`${colors.yellow}Warning: Could not resolve ALTs: ${error.message}${colors.reset}`);
+        }
+      }
+      
+      // Format account keys with loaded addresses
+      formattedKeys = formatAccountKeys(message.accountKeys, message.header, loadedAddresses);
+      
+      // Log ALT usage if any
+      if (loadedAddresses) {
+        const writableCount = loadedAddresses.writable?.length || 0;
+        const readonlyCount = loadedAddresses.readonly?.length || 0;
         if (writableCount > 0 || readonlyCount > 0) {
-          console.log(`\n${colors.cyan}Address Lookup Tables loaded: ${writableCount} writable, ${readonlyCount} readonly${colors.reset}`);
+          console.log(`\n${colors.cyan}Address Lookup Tables: ${writableCount} writable, ${readonlyCount} readonly addresses loaded${colors.reset}`);
         }
-        
-        // Add writable loaded addresses
-        if (meta.loadedAddresses.writable && meta.loadedAddresses.writable.length > 0) {
-          meta.loadedAddresses.writable.forEach(addr => {
-            const pubkey = decodePublicKey(addr);
-            additionalAccounts.push({
-              index: currentIndex++,
-              pubkey,
-              accountType: [`${colors.yellow}writable${colors.reset}`, `${colors.cyan}(from ALT)${colors.reset}`],
-              isMev: pubkey === MEV_PROGRAM_ID
-            });
-          });
-        }
-        
-        // Add readonly loaded addresses
-        if (meta.loadedAddresses.readonly && meta.loadedAddresses.readonly.length > 0) {
-          meta.loadedAddresses.readonly.forEach(addr => {
-            const pubkey = decodePublicKey(addr);
-            additionalAccounts.push({
-              index: currentIndex++,
-              pubkey,
-              accountType: [`${colors.cyan}(from ALT)${colors.reset}`],
-              isMev: pubkey === MEV_PROGRAM_ID
-            });
-          });
-        }
-        
-        // Merge with main accounts
-        formattedKeys = [...formattedKeys, ...additionalAccounts];
       }
       
       displayAccountKeys(formattedKeys);

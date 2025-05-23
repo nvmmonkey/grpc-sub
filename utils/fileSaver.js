@@ -2,6 +2,14 @@ const fs = require('fs');
 const path = require('path');
 const colors = require('./colors');
 const { getAccountName, isKnownProgram, isKnownToken } = require('./accountIdentifier');
+const { resolveLoadedAddresses } = require('./lookupTableResolver');
+const { Connection } = require('@solana/web3.js');
+
+// Initialize RPC connection for ALT resolution if available
+let rpcConnection = null;
+if (process.env.RPC_URL) {
+  rpcConnection = new Connection(process.env.RPC_URL, 'confirmed');
+}
 
 const MAX_SAVED_TRANSACTIONS = 100;
 const SAVE_FILE_PATH = path.join(__dirname, '..', 'sub-details.json');
@@ -67,7 +75,7 @@ function saveTransactionDetails(transactionData) {
  *   "logs": [...]
  * }
  */
-function extractTransactionDetails(data, transactionCount) {
+async function extractTransactionDetails(data, transactionCount) {
   const txData = data.transaction;
   const slot = txData.slot;
   const txInfo = txData.transaction;
@@ -90,42 +98,21 @@ function extractTransactionDetails(data, transactionCount) {
   // Process accounts if available
   if (tx && tx.message && tx.message.accountKeys) {
     const { formatAccountKeys } = require('./formatters');
-    const formattedKeys = formatAccountKeys(tx.message.accountKeys, tx.message.header);
     
-    // Check if there are loaded addresses (from address lookup tables)
-    let allAccounts = [...formattedKeys];
-    let totalAccountsCount = formattedKeys.length;
+    // Try to resolve loaded addresses from ALTs
+    let loadedAddresses = meta?.loadedAddresses;
     
-    // If meta contains loaded addresses, add them
-    if (meta && meta.loadedAddresses) {
-      
-      // Add writable loaded addresses
-      if (meta.loadedAddresses.writable && meta.loadedAddresses.writable.length > 0) {
-        meta.loadedAddresses.writable.forEach((addr, idx) => {
-          const pubkey = require('./decoders').decodePublicKey(addr);
-          allAccounts.push({
-            index: totalAccountsCount + idx,
-            pubkey,
-            accountType: [`${require('./colors').yellow}writable${require('./colors').reset}`],
-            isMev: pubkey === require('./constants').MEV_PROGRAM_ID
-          });
-        });
-        totalAccountsCount += meta.loadedAddresses.writable.length;
-      }
-      
-      // Add readonly loaded addresses
-      if (meta.loadedAddresses.readonly && meta.loadedAddresses.readonly.length > 0) {
-        meta.loadedAddresses.readonly.forEach((addr, idx) => {
-          const pubkey = require('./decoders').decodePublicKey(addr);
-          allAccounts.push({
-            index: totalAccountsCount + idx,
-            pubkey,
-            accountType: [],
-            isMev: pubkey === require('./constants').MEV_PROGRAM_ID
-          });
-        });
+    // If no loaded addresses in meta and we have RPC connection, try to resolve from ALTs
+    if (!loadedAddresses && rpcConnection) {
+      try {
+        loadedAddresses = await resolveLoadedAddresses(tx, meta, rpcConnection);
+      } catch (error) {
+        console.warn(`Could not resolve ALTs for saving: ${error.message}`);
       }
     }
+    
+    // Format all accounts including those from ALTs
+    const allAccounts = formatAccountKeys(tx.message.accountKeys, tx.message.header, loadedAddresses);
     
     details.accounts = allAccounts.map(({ index, pubkey, accountType, isMev }) => {
       const isSigner = accountType.some(type => type.includes('signer'));
