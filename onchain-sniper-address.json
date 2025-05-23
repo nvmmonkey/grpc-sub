@@ -1,0 +1,12 @@
+[
+  {
+    "address": "ExampleSigner1111111111111111111111111111111",
+    "name": "Example Signer 1",
+    "active": true
+  },
+  {
+    "address": "ExampleSigner2222222222222222222222222222222",
+    "name": "Example Signer 2",
+    "active": true
+  }
+]

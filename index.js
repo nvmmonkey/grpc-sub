@@ -7,9 +7,17 @@ const colors = require('./utils/colors');
 const { MEV_PROGRAM_ID } = require('./utils/constants');
 const { parseAndLogTransaction } = require('./utils/transactionParser');
 const { subscribeWithReconnect } = require('./utils/streamHandler');
+const { displayMenu, displayFilterSummary, waitForEnter } = require('./utils/menu');
+const { loadSignerAddresses } = require('./utils/signerFilter');
 
-// Global counter for transactions
+// Global counters
 let transactionCount = 0;
+let displayedCount = 0;
+let filteredCount = 0;
+
+// Configuration
+let filterMode = 'raw'; // 'raw' or 'filtered'
+let targetSigners = [];
 
 /**
  * Handle incoming transaction data
@@ -18,7 +26,24 @@ function handleTransactionData(data) {
   if (data?.transaction) {
     try {
       transactionCount++;
-      parseAndLogTransaction(data, transactionCount);
+      
+      const options = {
+        filterMode,
+        targetSigners
+      };
+      
+      const wasLogged = parseAndLogTransaction(data, displayedCount + 1, options);
+      
+      if (wasLogged) {
+        displayedCount++;
+      } else if (filterMode === 'filtered') {
+        filteredCount++;
+        
+        // Show progress every 100 filtered transactions
+        if (filteredCount % 100 === 0) {
+          console.log(`${colors.yellow}[Progress] Scanned ${transactionCount} transactions, filtered out ${filteredCount}, displayed ${displayedCount}${colors.reset}`);
+        }
+      }
     } catch (error) {
       console.error(`${colors.red}Error processing transaction:${colors.reset}`, error.message);
       console.error(error.stack);
@@ -31,6 +56,48 @@ function handleTransactionData(data) {
  */
 async function startMevMonitor() {
   try {
+    // Display menu and get user choice
+    let choice;
+    do {
+      choice = await displayMenu();
+      
+      switch (choice) {
+        case '1':
+          filterMode = 'raw';
+          displayFilterSummary('raw');
+          await waitForEnter();
+          break;
+          
+        case '2':
+          filterMode = 'filtered';
+          console.log(`\n${colors.cyan}Loading signer addresses from onchain-sniper-address.json...${colors.reset}\n`);
+          targetSigners = loadSignerAddresses();
+          
+          if (targetSigners.length === 0) {
+            console.log(`${colors.red}No active signer addresses found. Please update onchain-sniper-address.json${colors.reset}`);
+            await waitForEnter('Press Enter to return to menu...');
+            continue;
+          }
+          
+          displayFilterSummary('filtered', targetSigners.length);
+          await waitForEnter();
+          break;
+          
+        case '3':
+          console.log(`\n${colors.yellow}Exiting...${colors.reset}`);
+          process.exit(0);
+          
+        default:
+          console.log(`${colors.red}Invalid choice. Please try again.${colors.reset}`);
+          await waitForEnter();
+          continue;
+      }
+      
+      if (choice === '1' || choice === '2') {
+        break;
+      }
+    } while (true);
+
     // Check for required environment variables
     if (!process.env.GRPC_URL) {
       console.error(`${colors.red}Error: Missing GRPC_URL environment variable!${colors.reset}`);
@@ -71,17 +138,36 @@ async function startMevMonitor() {
     };
 
     // Display startup information
-    console.log(`${colors.bright}${colors.green}MEV Transaction Monitor v3.0${colors.reset}`);
+    console.clear();
+    console.log(`${colors.bright}${colors.green}MEV Transaction Monitor v3.1${colors.reset}`);
     console.log(`${colors.cyan}Connecting to gRPC stream...${colors.reset}`);
     console.log(`${colors.yellow}GRPC URL:${colors.reset} ${process.env.GRPC_URL}`);
     console.log(`${colors.yellow}Authentication:${colors.reset} ${process.env.X_TOKEN ? 'Enabled' : 'Disabled'}`);
-    console.log(`${colors.yellow}Program Filter:${colors.reset} ${MEV_PROGRAM_ID}\n`);
+    console.log(`${colors.yellow}Program Filter:${colors.reset} ${MEV_PROGRAM_ID}`);
+    
+    if (filterMode === 'filtered') {
+      console.log(`${colors.yellow}Signer Filter:${colors.reset} ${colors.magenta}Active (${targetSigners.length} addresses)${colors.reset}`);
+    } else {
+      console.log(`${colors.yellow}Signer Filter:${colors.reset} ${colors.white}Disabled${colors.reset}`);
+    }
+    
+    console.log('');
 
     // Configuration for stream handler
     const streamConfig = {
       programId: MEV_PROGRAM_ID,
       commitment: 'PROCESSED'
     };
+
+    // Add periodic stats display for filtered mode
+    if (filterMode === 'filtered') {
+      setInterval(() => {
+        if (transactionCount > 0) {
+          const filterRate = ((filteredCount / transactionCount) * 100).toFixed(1);
+          console.log(`\n${colors.cyan}[Stats] Total scanned: ${transactionCount} | Displayed: ${displayedCount} | Filtered: ${filteredCount} (${filterRate}%)${colors.reset}\n`);
+        }
+      }, 30000); // Every 30 seconds
+    }
 
     // Start the subscription with auto-reconnect
     await subscribeWithReconnect(

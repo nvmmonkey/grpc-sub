@@ -2,6 +2,7 @@ const colors = require('./colors');
 const { decodeSignature, decodeInstructionData, formatSol } = require('./decoders');
 const { formatAccountKeys, displayAccountKeys, displayBalanceChanges, displayProgramLogs } = require('./formatters');
 const { MEV_PROGRAM_ID, MAX_COMPUTE_UNITS } = require('./constants');
+const { hasTargetSigner } = require('./signerFilter');
 
 /**
  * Process and display instruction details
@@ -107,7 +108,9 @@ function displayTransactionMeta(meta, formattedKeys) {
 /**
  * Main transaction parser and logger
  */
-function parseAndLogTransaction(data, transactionCount) {
+function parseAndLogTransaction(data, transactionCount, options = {}) {
+  const { filterMode, targetSigners } = options;
+  
   // Extract transaction data
   const txData = data.transaction;
   const slot = txData.slot;
@@ -116,10 +119,31 @@ function parseAndLogTransaction(data, transactionCount) {
   // Decode signature
   const signature = decodeSignature(txInfo.signature);
   
-  // Display header
-  console.log(`${colors.bright}${colors.cyan}${'='.repeat(80)}${colors.reset}`);
-  console.log(`${colors.bright}${colors.green}[MEV Transaction #${transactionCount}]${colors.reset}`);
-  console.log(`${colors.bright}${colors.cyan}${'='.repeat(80)}${colors.reset}`);
+  // Process transaction content
+  const tx = txInfo.transaction;
+  const meta = txInfo.meta;
+  
+  // Early check for signer filter if in filtered mode
+  if (filterMode === 'filtered' && tx && tx.message && tx.message.accountKeys) {
+    const formattedKeys = formatAccountKeys(tx.message.accountKeys, tx.message.header);
+    const signerCheck = hasTargetSigner(formattedKeys, tx.message.header, targetSigners);
+    
+    if (!signerCheck.found) {
+      // Skip this transaction as it doesn't have our target signers
+      return false;
+    }
+    
+    // Display header with signer info
+    console.log(`${colors.bright}${colors.cyan}${'='.repeat(80)}${colors.reset}`);
+    console.log(`${colors.bright}${colors.green}[MEV Transaction #${transactionCount}]${colors.reset} ${colors.bright}${colors.magenta}◆ TARGET SIGNER DETECTED ◆${colors.reset}`);
+    console.log(`${colors.bright}${colors.cyan}${'='.repeat(80)}${colors.reset}`);
+    console.log(`${colors.yellow}Target Signer:${colors.reset} ${colors.bright}${colors.magenta}${signerCheck.signerAddress}${colors.reset} (index: ${signerCheck.signerIndex})`);
+  } else {
+    // Display normal header
+    console.log(`${colors.bright}${colors.cyan}${'='.repeat(80)}${colors.reset}`);
+    console.log(`${colors.bright}${colors.green}[MEV Transaction #${transactionCount}]${colors.reset}`);
+    console.log(`${colors.bright}${colors.cyan}${'='.repeat(80)}${colors.reset}`);
+  }
   
   console.log(`${colors.yellow}Signature:${colors.reset} ${signature}`);
   console.log(`${colors.yellow}Slot:${colors.reset} ${slot}`);
@@ -157,6 +181,7 @@ function parseAndLogTransaction(data, transactionCount) {
   }
   
   console.log(`${colors.bright}${colors.cyan}${'='.repeat(80)}${colors.reset}\n`);
+  return true; // Transaction was logged
 }
 
 module.exports = {

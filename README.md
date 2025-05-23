@@ -1,6 +1,6 @@
-# MEV Transaction Monitor v3.0
+# MEV Transaction Monitor v3.1
 
-Real-time monitoring of Solana MEV program transactions using Yellowstone gRPC.
+Real-time monitoring of Solana MEV program transactions using Yellowstone gRPC with interactive menu and signer filtering.
 
 ## Project Structure
 
@@ -12,8 +12,11 @@ grpc-sub/
 │   ├── constants.js   # Program IDs and constants
 │   ├── decoders.js    # Data decoding functions
 │   ├── formatters.js  # Display formatting utilities
+│   ├── menu.js        # Interactive menu system
+│   ├── signerFilter.js # Signer filtering logic
 │   ├── transactionParser.js  # Transaction parsing logic
 │   └── streamHandler.js      # gRPC stream management
+├── onchain-sniper-address.json  # Signer addresses configuration
 ├── package.json       # Node.js dependencies
 ├── .env.example       # Environment variables template
 └── README.md          # This file
@@ -21,6 +24,9 @@ grpc-sub/
 
 ## Features
 
+- **Interactive Menu System**: Choose between different monitoring modes
+- **Raw Subscription Mode**: Monitor all MEV program transactions
+- **Signer Filter Mode**: Monitor only transactions from specific signers
 - Real-time transaction monitoring for MEV program `MEViEnscUm6tsQRoGd9h6nLQaQspKj7DB2M5FwM3Xvz`
 - Detailed transaction logging with color-coded output
 - Automatic reconnection on stream errors
@@ -36,49 +42,82 @@ grpc-sub/
 ## Installation
 
 1. Navigate to the grpc-sub directory:
-
 ```bash
 cd C:\Users\a5469\Development\mev\grpc\grpc-sub
 ```
 
 2. Install dependencies:
-
 ```bash
 npm install
 ```
 
 3. Create a `.env` file based on `.env.example`:
-
 ```bash
 copy .env.example .env
 ```
 
 4. Edit `.env` and add your Yellowstone gRPC credentials:
-
 ```
 GRPC_URL=your_grpc_url_here
 X_TOKEN=your_access_token_here  # Optional - only if your endpoint requires authentication
 ```
 
+## Configuration
+
+### Signer Filter Configuration
+
+To use the signer filter mode, edit `onchain-sniper-address.json`:
+
+```json
+[
+  {
+    "address": "YourSignerAddress1111111111111111111111111111",
+    "name": "Sniper Bot 1",
+    "active": true
+  },
+  {
+    "address": "YourSignerAddress2222222222222222222222222222",
+    "name": "Sniper Bot 2",
+    "active": false
+  }
+]
+```
+
+- `address`: The Solana public key to monitor
+- `name`: A friendly name for identification
+- `active`: Set to `true` to include in filtering, `false` to ignore
+
 ## Usage
 
 Run the monitor:
-
 ```bash
 npm start
 ```
 
-The monitor will:
+### Menu Options:
 
-1. Connect to the Yellowstone gRPC stream
-2. Subscribe to all transactions involving the MEV program
-3. Log detailed information for each transaction in real-time
-4. Automatically reconnect if the connection is lost
+1. **Raw Subscription** - Monitor all MEV transactions
+   - Shows every transaction involving the MEV program
+   - No filtering applied
+
+2. **Filtered by Signer** - Monitor specific signers only
+   - Loads addresses from `onchain-sniper-address.json`
+   - Only shows transactions where configured addresses are signers
+   - Displays progress statistics every 100 filtered transactions
+   - Shows periodic stats every 30 seconds
+
+3. **Exit** - Close the monitor
+
+### Filtered Mode Features:
+
+- Highlights detected target signers with `◆ TARGET SIGNER DETECTED ◆`
+- Shows which signer was detected and at what index
+- Displays filtering statistics (scanned, displayed, filtered)
+- Only processes transactions where target addresses are actual signers (not just included accounts)
 
 ## Output Format
 
 Each transaction is displayed with:
-
 - Colored headers for easy identification
 - Transaction signature and slot number
 - All account keys with their roles
@@ -87,6 +126,11 @@ Each transaction is displayed with:
 - Balance changes for all accounts
 - Compute units consumed
 - Program logs
+
+In filtered mode, matching transactions also show:
+- Target signer highlight
+- Signer address and index
+- Periodic statistics
 
 ## Requirements
 
@@ -97,6 +141,7 @@ Each transaction is displayed with:
 
 ## Notes
 
-- The monitor uses `CONFIRMED` commitment level for reliable transaction data
+- The monitor uses `PROCESSED` commitment level for faster updates
 - Failed transactions are also captured and displayed
 - The monitor excludes vote transactions to reduce noise
+- Signer filtering only matches actual transaction signers, not just accounts included in the transaction
