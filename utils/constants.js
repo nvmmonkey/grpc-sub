@@ -1,0 +1,20 @@
+// MEV Program ID to monitor
+const MEV_PROGRAM_ID = "MEViEnscUm6tsQRoGd9h6nLQaQspKj7DB2M5FwM3Xvz";
+
+// Common Solana programs
+const PROGRAMS = {
+  SYSTEM: "11111111111111111111111111111111",
+  TOKEN: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  ASSOCIATED_TOKEN: "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+  COMPUTE_BUDGET: "ComputeBudget111111111111111111111111111111",
+  MEV: MEV_PROGRAM_ID
+};
+
+// Max compute units
+const MAX_COMPUTE_UNITS = 1400000;
+
+module.exports = {
+  MEV_PROGRAM_ID,
+  PROGRAMS,
+  MAX_COMPUTE_UNITS
+};
