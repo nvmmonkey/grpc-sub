@@ -4,6 +4,7 @@ const path = require('path');
 // Load known programs and tokens
 let knownPrograms = {};
 let knownTokens = {};
+let lookupTables = {};
 
 try {
   const dataPath = path.join(__dirname, '..', 'data', 'known-programs.json');
@@ -11,6 +12,7 @@ try {
     const data = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
     knownPrograms = data.programs || {};
     knownTokens = data.tokens || {};
+    lookupTables = data.lookupTables || {};
   }
 } catch (error) {
   console.error('Warning: Could not load known programs data');
@@ -28,6 +30,11 @@ function getAccountName(pubkey) {
   // Check if it's a known token
   if (knownTokens[pubkey]) {
     return knownTokens[pubkey];
+  }
+  
+  // Check if it's a lookup table
+  if (lookupTables[pubkey]) {
+    return lookupTables[pubkey];
   }
   
   // Return first 8 chars if unknown

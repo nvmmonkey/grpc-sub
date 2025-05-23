@@ -1,5 +1,5 @@
 const colors = require('./colors');
-const { decodeSignature, decodeInstructionData, formatSol } = require('./decoders');
+const { decodeSignature, decodeInstructionData, formatSol, decodePublicKey } = require('./decoders');
 const { formatAccountKeys, displayAccountKeys, displayBalanceChanges, displayProgramLogs } = require('./formatters');
 const { MEV_PROGRAM_ID, MAX_COMPUTE_UNITS } = require('./constants');
 const { hasTargetSigner } = require('./signerFilter');
@@ -79,7 +79,12 @@ function displayInstructions(instructions, accountKeys, formattedKeys) {
             if (accountKey.accountType.includes('signer')) flags.push('S');
             const flagStr = flags.length > 0 ? ` [${flags.join(',')}]` : '';
             
-            if (name !== accountKey.pubkey.substring(0, 8) + '...') {
+            // Check for SWARM token
+            const isSwarm = accountKey.pubkey === '3d7AzmWfTWJMwAxpoxgZ4uSMmGVaaC6z2f73dP3Mpump';
+            
+            if (isSwarm) {
+              console.log(`        #${i + 1} [${idx}] ${colors.bright}${colors.magenta}★ SWARM TOKEN ★${colors.reset} - ${accountKey.pubkey}${flagStr}`);
+            } else if (name !== accountKey.pubkey.substring(0, 8) + '...') {
               // Known account
               console.log(`        #${i + 1} [${idx}] ${colors.yellow}${name}${colors.reset} - ${accountKey.pubkey}${flagStr}`);
             } else {
@@ -203,6 +208,48 @@ function parseAndLogTransaction(data, transactionCount, options = {}) {
     let formattedKeys = [];
     if (message.accountKeys) {
       formattedKeys = formatAccountKeys(message.accountKeys, message.header);
+      
+      // Check if there are loaded addresses from address lookup tables
+      if (meta && meta.loadedAddresses) {
+        let additionalAccounts = [];
+        let currentIndex = formattedKeys.length;
+        const writableCount = meta.loadedAddresses.writable?.length || 0;
+        const readonlyCount = meta.loadedAddresses.readonly?.length || 0;
+        
+        if (writableCount > 0 || readonlyCount > 0) {
+          console.log(`\n${colors.cyan}Address Lookup Tables loaded: ${writableCount} writable, ${readonlyCount} readonly${colors.reset}`);
+        }
+        
+        // Add writable loaded addresses
+        if (meta.loadedAddresses.writable && meta.loadedAddresses.writable.length > 0) {
+          meta.loadedAddresses.writable.forEach(addr => {
+            const pubkey = decodePublicKey(addr);
+            additionalAccounts.push({
+              index: currentIndex++,
+              pubkey,
+              accountType: [`${colors.yellow}writable${colors.reset}`, `${colors.cyan}(from ALT)${colors.reset}`],
+              isMev: pubkey === MEV_PROGRAM_ID
+            });
+          });
+        }
+        
+        // Add readonly loaded addresses
+        if (meta.loadedAddresses.readonly && meta.loadedAddresses.readonly.length > 0) {
+          meta.loadedAddresses.readonly.forEach(addr => {
+            const pubkey = decodePublicKey(addr);
+            additionalAccounts.push({
+              index: currentIndex++,
+              pubkey,
+              accountType: [`${colors.cyan}(from ALT)${colors.reset}`],
+              isMev: pubkey === MEV_PROGRAM_ID
+            });
+          });
+        }
+        
+        // Merge with main accounts
+        formattedKeys = [...formattedKeys, ...additionalAccounts];
+      }
+      
       displayAccountKeys(formattedKeys);
     }
     

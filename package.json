@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node index.js",
-    "view": "node view-saved.js"
+    "view": "node view-saved.js",
+    "analyze": "node analyze-accounts.js"
   },
   "keywords": [
     "solana",

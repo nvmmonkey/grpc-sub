@@ -3,11 +3,12 @@ const { decodePublicKey, formatSol } = require('./decoders');
 const { MEV_PROGRAM_ID } = require('./constants');
 
 /**
- * Format account keys for display
+ * Format account keys for display including loaded addresses from ALTs
  */
-function formatAccountKeys(accountKeys, header) {
+function formatAccountKeys(accountKeys, header, loadedAddresses) {
   const formattedKeys = [];
   
+  // First, process the static account keys
   accountKeys.forEach((key, index) => {
     const pubkey = decodePublicKey(key);
     
@@ -34,6 +35,49 @@ function formatAccountKeys(accountKeys, header) {
       isMev: pubkey === MEV_PROGRAM_ID
     });
   });
+  
+  // Then, add loaded addresses from ALTs if available
+  if (loadedAddresses) {
+    let currentIndex = accountKeys.length;
+    
+    // Process writable addresses
+    if (loadedAddresses.writable && loadedAddresses.writable.length > 0) {
+      loadedAddresses.writable.forEach((address) => {
+        const pubkey = decodePublicKey(address);
+        const accountType = [`${colors.yellow}writable${colors.reset}`, `${colors.cyan}(from ALT)${colors.reset}`];
+        
+        if (pubkey === MEV_PROGRAM_ID) {
+          accountType.push(`${colors.bright}${colors.magenta}◆ MEV PROGRAM ◆${colors.reset}`);
+        }
+        
+        formattedKeys.push({
+          index: currentIndex++,
+          pubkey,
+          accountType,
+          isMev: pubkey === MEV_PROGRAM_ID
+        });
+      });
+    }
+    
+    // Process readonly addresses
+    if (loadedAddresses.readonly && loadedAddresses.readonly.length > 0) {
+      loadedAddresses.readonly.forEach((address) => {
+        const pubkey = decodePublicKey(address);
+        const accountType = [`${colors.cyan}(from ALT)${colors.reset}`];
+        
+        if (pubkey === MEV_PROGRAM_ID) {
+          accountType.push(`${colors.bright}${colors.magenta}◆ MEV PROGRAM ◆${colors.reset}`);
+        }
+        
+        formattedKeys.push({
+          index: currentIndex++,
+          pubkey,
+          accountType,
+          isMev: pubkey === MEV_PROGRAM_ID
+        });
+      });
+    }
+  }
   
   return formattedKeys;
 }

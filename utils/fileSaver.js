@@ -92,7 +92,42 @@ function extractTransactionDetails(data, transactionCount) {
     const { formatAccountKeys } = require('./formatters');
     const formattedKeys = formatAccountKeys(tx.message.accountKeys, tx.message.header);
     
-    details.accounts = formattedKeys.map(({ index, pubkey, accountType, isMev }) => {
+    // Check if there are loaded addresses (from address lookup tables)
+    let allAccounts = [...formattedKeys];
+    let totalAccountsCount = formattedKeys.length;
+    
+    // If meta contains loaded addresses, add them
+    if (meta && meta.loadedAddresses) {
+      
+      // Add writable loaded addresses
+      if (meta.loadedAddresses.writable && meta.loadedAddresses.writable.length > 0) {
+        meta.loadedAddresses.writable.forEach((addr, idx) => {
+          const pubkey = require('./decoders').decodePublicKey(addr);
+          allAccounts.push({
+            index: totalAccountsCount + idx,
+            pubkey,
+            accountType: [`${require('./colors').yellow}writable${require('./colors').reset}`],
+            isMev: pubkey === require('./constants').MEV_PROGRAM_ID
+          });
+        });
+        totalAccountsCount += meta.loadedAddresses.writable.length;
+      }
+      
+      // Add readonly loaded addresses
+      if (meta.loadedAddresses.readonly && meta.loadedAddresses.readonly.length > 0) {
+        meta.loadedAddresses.readonly.forEach((addr, idx) => {
+          const pubkey = require('./decoders').decodePublicKey(addr);
+          allAccounts.push({
+            index: totalAccountsCount + idx,
+            pubkey,
+            accountType: [],
+            isMev: pubkey === require('./constants').MEV_PROGRAM_ID
+          });
+        });
+      }
+    }
+    
+    details.accounts = allAccounts.map(({ index, pubkey, accountType, isMev }) => {
       const isSigner = accountType.some(type => type.includes('signer'));
       const isWritable = accountType.some(type => type.includes('writable'));
       
@@ -110,7 +145,7 @@ function extractTransactionDetails(data, transactionCount) {
     });
     
     // Check for signers
-    details.signers = formattedKeys
+    details.signers = allAccounts
       .filter(key => key.accountType.some(type => type.includes('signer')))
       .map(key => key.pubkey);
   }
