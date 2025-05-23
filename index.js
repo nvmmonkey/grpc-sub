@@ -9,7 +9,6 @@ const MEV_PROGRAM_ID = "MEViEnscUm6tsQRoGd9h6nLQaQspKj7DB2M5FwM3Xvz";
 
 // Global counter for transactions
 let transactionCount = 0;
-let minimalDataCount = 0;
 
 // Color codes for console output
 const colors = {
@@ -21,7 +20,31 @@ const colors = {
   blue: '\x1b[34m',
   magenta: '\x1b[35m',
   cyan: '\x1b[36m',
+  white: '\x1b[37m',
 };
+
+/**
+ * Decode base64 encoded public key
+ */
+function decodePublicKey(key) {
+  try {
+    if (typeof key === 'string') {
+      return new PublicKey(Buffer.from(key, 'base64')).toBase58();
+    } else if (Buffer.isBuffer(key) || key instanceof Uint8Array) {
+      return new PublicKey(key).toBase58();
+    }
+    return 'Invalid key';
+  } catch (e) {
+    return 'Decode error';
+  }
+}
+
+/**
+ * Format SOL amount from lamports
+ */
+function formatSol(lamports) {
+  return (lamports / 1e9).toFixed(9).replace(/\.?0+$/, '');
+}
 
 /**
  * Formats and logs transaction details from Yellowstone gRPC format
@@ -41,102 +64,225 @@ function logTransaction(data) {
       signature = bs58.encode(txInfo.signature);
     }
     
-    // Check if we have actual transaction content
-    const hasTransactionContent = txInfo.transaction && Object.keys(txInfo.transaction).length > 0;
-    const hasMetaContent = txInfo.meta && Object.keys(txInfo.meta).length > 0;
-    
-    if (!hasTransactionContent && !hasMetaContent) {
-      minimalDataCount++;
-      
-      // Show summary every 10 minimal transactions
-      if (minimalDataCount % 10 === 0) {
-        console.log(`${colors.yellow}[Summary] ${minimalDataCount} transactions received with minimal data (signatures only)${colors.reset}`);
-        console.log(`${colors.yellow}Latest: ${signature.substring(0, 20)}... in slot ${slot}${colors.reset}`);
-      }
-      
-      // Show full details for first few
-      if (minimalDataCount <= 3) {
-        console.log(`${colors.bright}${colors.cyan}${'='.repeat(80)}${colors.reset}`);
-        console.log(`${colors.bright}${colors.yellow}[MEV Transaction #${transactionCount} - Minimal Data]${colors.reset}`);
-        console.log(`${colors.bright}${colors.cyan}${'='.repeat(80)}${colors.reset}`);
-        console.log(`${colors.yellow}Signature:${colors.reset} ${signature}`);
-        console.log(`${colors.yellow}Slot:${colors.reset} ${slot}`);
-        console.log(`${colors.yellow}Index:${colors.reset} ${txInfo.index}`);
-        console.log(`${colors.yellow}Is Vote:${colors.reset} ${txInfo.isVote}`);
-        console.log(`${colors.red}Note: Your RPC is not providing transaction details.${colors.reset}`);
-        console.log(`${colors.red}This could mean:${colors.reset}`);
-        console.log(`  - The RPC doesn't have transaction content indexed`);
-        console.log(`  - The RPC is configured for minimal data streaming`);
-        console.log(`  - You need a different RPC endpoint with full indexing`);
-        console.log(`${colors.bright}${colors.cyan}${'='.repeat(80)}${colors.reset}\n`);
-      }
-      
-      return;
-    }
-    
-    // If we get here, we have actual transaction content
     console.log(`${colors.bright}${colors.cyan}${'='.repeat(80)}${colors.reset}`);
-    console.log(`${colors.bright}${colors.green}[MEV Transaction #${transactionCount} - Full Data]${colors.reset}`);
+    console.log(`${colors.bright}${colors.green}[MEV Transaction #${transactionCount}]${colors.reset}`);
     console.log(`${colors.bright}${colors.cyan}${'='.repeat(80)}${colors.reset}`);
     
     console.log(`${colors.yellow}Signature:${colors.reset} ${signature}`);
     console.log(`${colors.yellow}Slot:${colors.reset} ${slot}`);
     console.log(`${colors.yellow}Index:${colors.reset} ${txInfo.index}`);
+    console.log(`${colors.yellow}Time:${colors.reset} ${new Date().toISOString()}`);
     
-    // Process transaction content if available
-    if (hasTransactionContent) {
-      console.log(`${colors.green}Transaction content available!${colors.reset}`);
-      // Process message, accounts, instructions, etc.
+    // Process transaction content
+    const tx = txInfo.transaction;
+    const meta = txInfo.meta;
+    
+    if (tx && tx.message) {
+      const message = tx.message;
+      
+      // Decode account keys
+      const accountKeys = [];
+      if (message.accountKeys) {
+        console.log(`\n${colors.bright}${colors.blue}Account Keys (${message.accountKeys.length} total):${colors.reset}`);
+        
+        message.accountKeys.forEach((key, index) => {
+          const pubkey = decodePublicKey(key);
+          accountKeys.push(pubkey);
+          
+          // Determine account type
+          let accountType = [];
+          if (message.header) {
+            const header = message.header;
+            const isWritable = index < header.numRequiredSignatures - header.numReadonlySignedAccounts ||
+                              (index >= header.numRequiredSignatures && 
+                               index < accountKeys.length - header.numReadonlyUnsignedAccounts);
+            const isSigner = index < header.numRequiredSignatures;
+            
+            if (isSigner) accountType.push(`${colors.green}signer${colors.reset}`);
+            if (isWritable) accountType.push(`${colors.yellow}writable${colors.reset}`);
+          }
+          
+          if (pubkey === MEV_PROGRAM_ID) {
+            accountType.push(`${colors.bright}${colors.magenta}◆ MEV PROGRAM ◆${colors.reset}`);
+          }
+          
+          // Show first 10 accounts in detail
+          if (index < 10 || pubkey === MEV_PROGRAM_ID) {
+            console.log(`  [${index.toString().padStart(2)}] ${pubkey} ${accountType.length > 0 ? `(${accountType.join(', ')})` : ''}`);
+          } else if (index === 10) {
+            console.log(`  ... and ${accountKeys.length - 10} more accounts`);
+          }
+        });
+      }
+      
+      // Process instructions
+      if (message.instructions && message.instructions.length > 0) {
+        console.log(`\n${colors.bright}${colors.blue}Instructions (${message.instructions.length} total):${colors.reset}`);
+        
+        message.instructions.forEach((ix, index) => {
+          const programId = accountKeys[ix.programIdIndex] || `Unknown (index: ${ix.programIdIndex})`;
+          const isMevInstruction = programId === MEV_PROGRAM_ID;
+          
+          if (isMevInstruction) {
+            console.log(`  ${colors.bright}${colors.magenta}[${index}] ◆ MEV Program Instruction ◆${colors.reset}`);
+          } else {
+            console.log(`  [${index}] Program: ${programId}`);
+          }
+          
+          // Decode instruction data
+          if (ix.data) {
+            let dataHex;
+            if (typeof ix.data === 'string') {
+              dataHex = Buffer.from(ix.data, 'base64').toString('hex');
+            } else {
+              dataHex = Buffer.from(ix.data).toString('hex');
+            }
+            
+            // Show first 32 bytes of data
+            const displayData = dataHex.length > 64 ? dataHex.substring(0, 64) + '...' : dataHex;
+            console.log(`      Data: ${displayData} (${Math.floor(dataHex.length / 2)} bytes)`);
+          }
+          
+          // Show accounts used
+          if (ix.accounts && ix.accounts.length > 0) {
+            const accountsList = ix.accounts.slice(0, 5).map(idx => {
+              const key = accountKeys[idx];
+              if (key) {
+                return `[${idx}] ${key.substring(0, 8)}...`;
+              }
+              return `[${idx}]`;
+            });
+            
+            if (ix.accounts.length > 5) {
+              accountsList.push(`+${ix.accounts.length - 5} more`);
+            }
+            
+            console.log(`      Accounts: ${accountsList.join(', ')}`);
+          }
+        });
+      }
+      
+      // Process inner instructions
+      if (meta && meta.innerInstructions && meta.innerInstructions.length > 0) {
+        console.log(`\n${colors.bright}${colors.blue}Inner Instructions:${colors.reset}`);
+        meta.innerInstructions.forEach((inner) => {
+          console.log(`  From instruction [${inner.index}]:`);
+          inner.instructions.forEach((innerIx, idx) => {
+            const programId = accountKeys[innerIx.programIdIndex] || `Unknown`;
+            console.log(`    [${idx}] ${programId.substring(0, 44)}...`);
+          });
+        });
+      }
     }
     
-    // Process metadata if available
-    if (hasMetaContent) {
-      console.log(`${colors.green}Transaction metadata available!${colors.reset}`);
-      // Process errors, logs, balance changes, etc.
+    // Process metadata
+    if (meta) {
+      // Transaction status
+      const status = meta.err || meta.errorInfo ? `${colors.red}✗ Failed${colors.reset}` : `${colors.green}✓ Success${colors.reset}`;
+      console.log(`\n${colors.bright}${colors.blue}Transaction Result:${colors.reset}`);
+      console.log(`  Status: ${status}`);
+      
+      if (meta.err || meta.errorInfo) {
+        console.log(`  ${colors.red}Error:${colors.reset} ${JSON.stringify(meta.err || meta.errorInfo)}`);
+      }
+      
+      // Fees and compute
+      if (meta.fee) {
+        console.log(`  Fee: ${colors.yellow}◎ ${formatSol(meta.fee)}${colors.reset} SOL`);
+      }
+      
+      if (meta.computeUnitsConsumed) {
+        const maxUnits = 1400000; // Max compute units
+        const percentage = ((meta.computeUnitsConsumed / maxUnits) * 100).toFixed(1);
+        console.log(`  Compute Units: ${colors.cyan}${meta.computeUnitsConsumed.toLocaleString()}${colors.reset} (${percentage}% of max)`);
+      }
+      
+      // Balance changes
+      if (meta.preBalances && meta.postBalances && tx && tx.message && tx.message.accountKeys) {
+        const significantChanges = [];
+        
+        meta.preBalances.forEach((preBalance, index) => {
+          const postBalance = meta.postBalances[index];
+          const change = postBalance - preBalance;
+          
+          if (change !== 0 && accountKeys[index]) {
+            significantChanges.push({
+              pubkey: accountKeys[index],
+              change,
+              isMev: accountKeys[index] === MEV_PROGRAM_ID
+            });
+          }
+        });
+        
+        if (significantChanges.length > 0) {
+          console.log(`\n${colors.bright}${colors.blue}Balance Changes:${colors.reset}`);
+          
+          // Sort by absolute change amount
+          significantChanges.sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
+          
+          // Show top 5 changes
+          significantChanges.slice(0, 5).forEach(({ pubkey, change, isMev }) => {
+            const changeStr = change > 0 ? `+${formatSol(change)}` : formatSol(change);
+            const changeColor = change > 0 ? colors.green : colors.red;
+            const prefix = isMev ? `${colors.magenta}◆ MEV${colors.reset} ` : '';
+            console.log(`  ${prefix}${pubkey.substring(0, 20)}...  ${changeColor}${changeStr} SOL${colors.reset}`);
+          });
+          
+          if (significantChanges.length > 5) {
+            console.log(`  ... and ${significantChanges.length - 5} more balance changes`);
+          }
+        }
+      }
+      
+      // Token balance changes
+      if (meta.postTokenBalances && meta.postTokenBalances.length > 0) {
+        console.log(`\n${colors.bright}${colors.blue}Token Transfers:${colors.reset} ${meta.postTokenBalances.length} token balance(s) affected`);
+      }
+      
+      // Log messages
+      if (meta.logMessages && meta.logMessages.length > 0) {
+        console.log(`\n${colors.bright}${colors.blue}Program Logs:${colors.reset}`);
+        
+        let mevLogs = [];
+        let otherLogs = [];
+        
+        meta.logMessages.forEach((log) => {
+          if (log.includes(MEV_PROGRAM_ID) || log.includes('Program log: MEV')) {
+            mevLogs.push(log);
+          } else {
+            otherLogs.push(log);
+          }
+        });
+        
+        // Show MEV logs first
+        if (mevLogs.length > 0) {
+          console.log(`  ${colors.magenta}◆ MEV Program Logs:${colors.reset}`);
+          mevLogs.slice(0, 10).forEach((log, idx) => {
+            console.log(`    ${colors.magenta}[${idx}]${colors.reset} ${log}`);
+          });
+        }
+        
+        // Show other logs
+        if (otherLogs.length > 0) {
+          console.log(`  Other Logs (${otherLogs.length} total):`);
+          otherLogs.slice(0, 5).forEach((log, idx) => {
+            console.log(`    [${idx}] ${log.substring(0, 100)}${log.length > 100 ? '...' : ''}`);
+          });
+          
+          if (otherLogs.length > 5) {
+            console.log(`    ... and ${otherLogs.length - 5} more logs`);
+          }
+        }
+      }
     }
     
     console.log(`${colors.bright}${colors.cyan}${'='.repeat(80)}${colors.reset}\n`);
     
   } catch (error) {
     console.error(`${colors.red}Error processing transaction:${colors.reset}`, error.message);
+    console.error(error.stack);
   }
 }
-
-/**
- * Stream health monitoring
- */
-let dataReceivedCount = 0;
-let lastDataReceivedTime = Date.now();
-
-function checkStreamHealth() {
-  const now = Date.now();
-  const timeSinceLastData = (now - lastDataReceivedTime) / 1000;
-  
-  console.log(`\n${colors.yellow}=== Stream Health Check ===${colors.reset}`);
-  console.log(`${colors.green}✓ Stream is active${colors.reset}`);
-  console.log(`Total data events: ${dataReceivedCount}`);
-  console.log(`MEV transactions found: ${transactionCount}`);
-  console.log(`Transactions with only signatures: ${minimalDataCount}`);
-  console.log(`Time since last data: ${timeSinceLastData.toFixed(1)}s`);
-  
-  if (minimalDataCount > 0 && minimalDataCount === transactionCount) {
-    console.log(`\n${colors.red}⚠️  WARNING: All transactions lack detailed data${colors.reset}`);
-    console.log(`${colors.yellow}Your RPC endpoint appears to be streaming only transaction signatures.${colors.reset}`);
-    console.log(`${colors.yellow}To get full transaction details, you need an RPC with:${colors.reset}`);
-    console.log(`  - Full transaction indexing enabled`);
-    console.log(`  - accountsDataSlice configuration`);
-    console.log(`  - Proper gRPC streaming configuration`);
-    console.log(`\n${colors.cyan}Recommended RPC providers with full indexing:${colors.reset}`);
-    console.log(`  - Helius`);
-    console.log(`  - Triton`);
-    console.log(`  - Your own Geyser plugin with full indexing`);
-  }
-  
-  console.log(`${colors.yellow}===========================${colors.reset}\n`);
-}
-
-// Run health check every 30 seconds
-setInterval(checkStreamHealth, 30000);
 
 /**
  * Handles the gRPC stream
@@ -165,15 +311,6 @@ async function handleStream(client, args) {
 
   // Handle incoming data
   stream.on("data", (data) => {
-    dataReceivedCount++;
-    lastDataReceivedTime = Date.now();
-    
-    // Log every 100th data event
-    if (dataReceivedCount % 100 === 0) {
-      console.log(`${colors.cyan}[Stream Active] Received ${dataReceivedCount} data events${colors.reset}`);
-    }
-    
-    // Check if this is a transaction
     if (data?.transaction) {
       logTransaction(data);
     }
@@ -197,7 +334,7 @@ async function handleStream(client, args) {
   console.log(`${colors.green}✓ Connected to gRPC stream${colors.reset}`);
   console.log(`${colors.cyan}Monitoring MEV Program: ${MEV_PROGRAM_ID}${colors.reset}`);
   console.log(`${colors.yellow}Commitment Level: PROCESSED${colors.reset}`);
-  console.log(`${colors.magenta}Waiting for transactions...${colors.reset}\n`);
+  console.log(`${colors.magenta}Streaming full transaction details...${colors.reset}\n`);
 
   // Wait for the stream to close
   await streamClosed;
@@ -259,15 +396,11 @@ async function subscribeCommand(client, args) {
       commitment: CommitmentLevel.PROCESSED,
     };
 
-    console.log(`${colors.bright}${colors.green}MEV Transaction Monitor v1.3${colors.reset}`);
+    console.log(`${colors.bright}${colors.green}MEV Transaction Monitor v2.0${colors.reset}`);
     console.log(`${colors.cyan}Connecting to gRPC stream...${colors.reset}`);
     console.log(`${colors.yellow}GRPC URL:${colors.reset} ${process.env.GRPC_URL}`);
     console.log(`${colors.yellow}Authentication:${colors.reset} ${process.env.X_TOKEN ? 'Enabled' : 'Disabled'}`);
     console.log(`${colors.yellow}Program Filter:${colors.reset} ${MEV_PROGRAM_ID}\n`);
-
-    // Initial warning about RPC requirements
-    console.log(`${colors.yellow}Note: This monitor requires an RPC with full transaction indexing.${colors.reset}`);
-    console.log(`${colors.yellow}If you only see signatures, your RPC may not have full data.${colors.reset}\n`);
 
     // Start the subscription
     await subscribeCommand(client, req);
