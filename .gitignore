@@ -8,5 +8,8 @@ yarn-error.log*
 .DS_Store
 *.log
 
+# Saved transaction details
+sub-details.json
+
 # Optional: uncomment if onchain-sniper-address.json contains sensitive data
 # onchain-sniper-address.json

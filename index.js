@@ -9,14 +9,16 @@ const { parseAndLogTransaction } = require('./utils/transactionParser');
 const { subscribeWithReconnect } = require('./utils/streamHandler');
 const { displayMenu, displayFilterSummary, waitForEnter } = require('./utils/menu');
 const { loadSignerAddresses } = require('./utils/signerFilter');
+const { saveTransactionDetails, extractTransactionDetails, displaySaveProgress, MAX_SAVED_TRANSACTIONS } = require('./utils/fileSaver');
 
 // Global counters
 let transactionCount = 0;
 let displayedCount = 0;
 let filteredCount = 0;
+let savedCount = 0;
 
 // Configuration
-let filterMode = 'raw'; // 'raw' or 'filtered'
+let filterMode = 'raw'; // 'raw', 'filtered', or 'save'
 let targetSigners = [];
 
 /**
@@ -36,6 +38,17 @@ function handleTransactionData(data) {
       
       if (wasLogged) {
         displayedCount++;
+        
+        // Save transaction if in save mode
+        if (filterMode === 'save') {
+          const transactionDetails = extractTransactionDetails(data, displayedCount);
+          const currentSavedCount = saveTransactionDetails(transactionDetails);
+          
+          if (currentSavedCount > 0) {
+            savedCount = currentSavedCount;
+            displaySaveProgress(savedCount, transactionCount);
+          }
+        }
       } else if (filterMode === 'filtered') {
         filteredCount++;
         
@@ -84,6 +97,15 @@ async function startMevMonitor() {
           break;
           
         case '3':
+          filterMode = 'save';
+          console.log(`\n${colors.cyan}Save to File mode selected${colors.reset}`);
+          console.log(`${colors.yellow}Transactions will be saved to sub-details.json${colors.reset}`);
+          console.log(`${colors.yellow}Maximum ${MAX_SAVED_TRANSACTIONS} transactions will be kept${colors.reset}`);
+          displayFilterSummary('save');
+          await waitForEnter();
+          break;
+          
+        case '4':
           console.log(`\n${colors.yellow}Exiting...${colors.reset}`);
           process.exit(0);
           
@@ -93,7 +115,7 @@ async function startMevMonitor() {
           continue;
       }
       
-      if (choice === '1' || choice === '2') {
+      if (choice === '1' || choice === '2' || choice === '3') {
         break;
       }
     } while (true);
@@ -147,8 +169,10 @@ async function startMevMonitor() {
     
     if (filterMode === 'filtered') {
       console.log(`${colors.yellow}Signer Filter:${colors.reset} ${colors.magenta}Active (${targetSigners.length} addresses)${colors.reset}`);
+    } else if (filterMode === 'save') {
+      console.log(`${colors.yellow}Save Mode:${colors.reset} ${colors.magenta}Active (saving to sub-details.json)${colors.reset}`);
     } else {
-      console.log(`${colors.yellow}Signer Filter:${colors.reset} ${colors.white}Disabled${colors.reset}`);
+      console.log(`${colors.yellow}Mode:${colors.reset} ${colors.white}Raw subscription${colors.reset}`);
     }
     
     console.log('');
@@ -159,12 +183,18 @@ async function startMevMonitor() {
       commitment: 'PROCESSED'
     };
 
-    // Add periodic stats display for filtered mode
+    // Add periodic stats display
     if (filterMode === 'filtered') {
       setInterval(() => {
         if (transactionCount > 0) {
           const filterRate = ((filteredCount / transactionCount) * 100).toFixed(1);
           console.log(`\n${colors.cyan}[Stats] Total scanned: ${transactionCount} | Displayed: ${displayedCount} | Filtered: ${filteredCount} (${filterRate}%)${colors.reset}\n`);
+        }
+      }, 30000); // Every 30 seconds
+    } else if (filterMode === 'save') {
+      setInterval(() => {
+        if (transactionCount > 0) {
+          console.log(`\n${colors.cyan}[Save Stats] Total scanned: ${transactionCount} | Displayed: ${displayedCount} | Saved: ${savedCount}/${MAX_SAVED_TRANSACTIONS}${colors.reset}\n`);
         }
       }, 30000); // Every 30 seconds
     }

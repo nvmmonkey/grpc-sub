@@ -25,10 +25,11 @@ async function displayMenu() {
   console.log(`${colors.yellow}Select monitoring mode:${colors.reset}\n`);
   console.log(`  ${colors.bright}[1]${colors.reset} ${colors.green}Raw Subscription${colors.reset} - Monitor all MEV transactions`);
   console.log(`  ${colors.bright}[2]${colors.reset} ${colors.blue}Filtered by Signer${colors.reset} - Monitor only transactions from specific signers`);
-  console.log(`  ${colors.bright}[3]${colors.reset} ${colors.red}Exit${colors.reset}\n`);
+  console.log(`  ${colors.bright}[3]${colors.reset} ${colors.magenta}Save to File${colors.reset} - Monitor and save transaction details (max 100)`);
+  console.log(`  ${colors.bright}[4]${colors.reset} ${colors.red}Exit${colors.reset}\n`);
   
   return new Promise((resolve) => {
-    rl.question(`${colors.yellow}Enter your choice (1-3): ${colors.reset}`, (answer) => {
+    rl.question(`${colors.yellow}Enter your choice (1-4): ${colors.reset}`, (answer) => {
       rl.close();
       resolve(answer.trim());
     });
@@ -49,6 +50,10 @@ function displayFilterSummary(mode, signerCount = 0) {
   } else if (mode === 'filtered') {
     console.log(`${colors.yellow}Mode:${colors.reset} ${colors.blue}Filtered by Signer${colors.reset}`);
     console.log(`${colors.yellow}Filter:${colors.reset} Only transactions from ${signerCount} configured signers`);
+  } else if (mode === 'save') {
+    console.log(`${colors.yellow}Mode:${colors.reset} ${colors.magenta}Save to File${colors.reset}`);
+    console.log(`${colors.yellow}Output:${colors.reset} Transaction details saved to sub-details.json`);
+    console.log(`${colors.yellow}Limit:${colors.reset} Maximum 100 transactions (oldest replaced when full)`);
   }
   
   console.log(`${colors.bright}${colors.cyan}═══════════════════════════════════════════════════════════════${colors.reset}\n`);
