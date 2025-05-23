@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const colors = require('./colors');
+const { getAccountName, isKnownProgram, isKnownToken } = require('./accountIdentifier');
 
 const MAX_SAVED_TRANSACTIONS = 100;
 const SAVE_FILE_PATH = path.join(__dirname, '..', 'sub-details.json');
@@ -91,13 +92,22 @@ function extractTransactionDetails(data, transactionCount) {
     const { formatAccountKeys } = require('./formatters');
     const formattedKeys = formatAccountKeys(tx.message.accountKeys, tx.message.header);
     
-    details.accounts = formattedKeys.map(({ index, pubkey, accountType, isMev }) => ({
-      index,
-      pubkey,
-      isSigner: accountType.some(type => type.includes('signer')),
-      isWritable: accountType.some(type => type.includes('writable')),
-      isMevProgram: isMev
-    }));
+    details.accounts = formattedKeys.map(({ index, pubkey, accountType, isMev }) => {
+      const isSigner = accountType.some(type => type.includes('signer'));
+      const isWritable = accountType.some(type => type.includes('writable'));
+      
+      return {
+        index,
+        pubkey,
+        name: getAccountName(pubkey),
+        isSigner,
+        isWritable,
+        isMevProgram: isMev,
+        isKnownProgram: isKnownProgram(pubkey),
+        isKnownToken: isKnownToken(pubkey),
+        accountType: accountType
+      };
+    });
     
     // Check for signers
     details.signers = formattedKeys
@@ -113,6 +123,18 @@ function extractTransactionDetails(data, transactionCount) {
       const programId = details.accounts?.[ix.programIdIndex]?.pubkey || `Unknown`;
       const { hex, length } = decodeInstructionData(ix.data);
       
+      // Properly handle accounts array - convert Buffer to array if needed
+      let accountIndices = [];
+      if (ix.accounts) {
+        if (Buffer.isBuffer(ix.accounts)) {
+          accountIndices = Array.from(ix.accounts);
+        } else if (ix.accounts.type === 'Buffer' && ix.accounts.data) {
+          accountIndices = ix.accounts.data;
+        } else if (Array.isArray(ix.accounts)) {
+          accountIndices = ix.accounts;
+        }
+      }
+      
       return {
         index: idx,
         programId,
@@ -121,13 +143,22 @@ function extractTransactionDetails(data, transactionCount) {
         data: hex,
         dataBase64: typeof ix.data === 'string' ? ix.data : Buffer.from(ix.data).toString('base64'),
         dataLength: length,
-        accounts: ix.accounts || [],
-        accountsCount: ix.accounts?.length || 0,
-        // Add readable account references
-        accountKeys: ix.accounts?.map(accIdx => ({
-          index: accIdx,
-          pubkey: details.accounts?.[accIdx]?.pubkey || 'Unknown'
-        })) || []
+        accounts: accountIndices,
+        accountsCount: accountIndices.length,
+        // Add readable account references with proper names
+        accountKeys: accountIndices.map((accIdx, i) => {
+          const account = details.accounts?.[accIdx];
+          return {
+            index: accIdx,
+            position: i,
+            pubkey: account?.pubkey || 'Unknown',
+            name: account?.name || getAccountName(account?.pubkey || 'Unknown'),
+            isSigner: account?.isSigner || false,
+            isWritable: account?.isWritable || false,
+            isKnownProgram: account?.isKnownProgram || false,
+            isKnownToken: account?.isKnownToken || false
+          };
+        })
       };
     });
     
@@ -139,20 +170,42 @@ function extractTransactionDetails(data, transactionCount) {
   if (meta && meta.innerInstructions && meta.innerInstructions.length > 0) {
     details.innerInstructions = meta.innerInstructions.map(inner => ({
       index: inner.index,
-      instructions: inner.instructions.map(innerIx => {
+      instructions: inner.instructions.map((innerIx, innerIdx) => {
         const programId = details.accounts?.[innerIx.programIdIndex]?.pubkey || `Unknown`;
         const { hex, length } = require('./decoders').decodeInstructionData(innerIx.data);
         
+        // Properly handle accounts array for inner instructions
+        let accountIndices = [];
+        if (innerIx.accounts) {
+          if (Buffer.isBuffer(innerIx.accounts)) {
+            accountIndices = Array.from(innerIx.accounts);
+          } else if (innerIx.accounts.type === 'Buffer' && innerIx.accounts.data) {
+            accountIndices = innerIx.accounts.data;
+          } else if (Array.isArray(innerIx.accounts)) {
+            accountIndices = innerIx.accounts;
+          }
+        }
+        
         return {
+          index: innerIdx,
           programId,
           programIdIndex: innerIx.programIdIndex,
           data: hex,
           dataLength: length,
-          accounts: innerIx.accounts || [],
-          accountKeys: innerIx.accounts?.map(accIdx => ({
-            index: accIdx,
-            pubkey: details.accounts?.[accIdx]?.pubkey || 'Unknown'
-          })) || []
+          accounts: accountIndices,
+          accountKeys: accountIndices.map((accIdx, i) => {
+            const account = details.accounts?.[accIdx];
+            return {
+              index: accIdx,
+              position: i,
+              pubkey: account?.pubkey || 'Unknown',
+              name: account?.name || getAccountName(account?.pubkey || 'Unknown'),
+              isSigner: account?.isSigner || false,
+              isWritable: account?.isWritable || false,
+              isKnownProgram: account?.isKnownProgram || false,
+              isKnownToken: account?.isKnownToken || false
+            };
+          })
         };
       })
     }));

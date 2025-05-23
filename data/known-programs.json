@@ -1,0 +1,20 @@
+{
+  "programs": {
+    "11111111111111111111111111111111": "System Program",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA": "Token Program",
+    "ComputeBudget111111111111111111111111111111": "Compute Budget Program",
+    "MEViEnscUm6tsQRoGd9h6nLQaQspKj7DB2M5FwM3Xvz": "MEV Program",
+    "Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo": "Memo Program",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL": "Associated Token Account Program",
+    "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P": "Pump.fun AMM",
+    "CpMah17kQEL2wqyMKt3mZBdTnZbkbfx4nqmQMFDP5vwp": "Pump.fun Protocol Fee",
+    "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4": "Jupiter Aggregator v6",
+    "So11111111111111111111111111111111111111112": "Wrapped SOL"
+  },
+  "tokens": {
+    "So11111111111111111111111111111111111111112": "WSOL",
+    "3d7AzmWfTWJMwAxpoxgZ4uSMmGVaaC6z2f73dP3Mpump": "SWARM (Pump.fun)",
+    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v": "USDC",
+    "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB": "USDT"
+  }
+}

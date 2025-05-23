@@ -3,6 +3,7 @@ const { decodeSignature, decodeInstructionData, formatSol } = require('./decoder
 const { formatAccountKeys, displayAccountKeys, displayBalanceChanges, displayProgramLogs } = require('./formatters');
 const { MEV_PROGRAM_ID, MAX_COMPUTE_UNITS } = require('./constants');
 const { hasTargetSigner } = require('./signerFilter');
+const { getAccountName, formatAccountDisplay } = require('./accountIdentifier');
 
 /**
  * Process and display instruction details
@@ -29,11 +30,24 @@ function displayInstructions(instructions, accountKeys, formattedKeys) {
     
     // Show accounts used
     if (ix.accounts && ix.accounts.length > 0) {
+      // Convert accounts to array if it's a Buffer
+      let accountIndices = [];
+      if (Buffer.isBuffer(ix.accounts)) {
+        accountIndices = Array.from(ix.accounts);
+      } else if (ix.accounts.type === 'Buffer' && ix.accounts.data) {
+        accountIndices = ix.accounts.data;
+      } else if (Array.isArray(ix.accounts)) {
+        accountIndices = ix.accounts;
+      }
+      
       const accountsInfo = [];
       
-      // Process first 5 accounts
-      for (let i = 0; i < Math.min(5, ix.accounts.length); i++) {
-        const idx = ix.accounts[i];
+      // For MEV instructions, show more accounts
+      const displayLimit = isMevInstruction ? 10 : 5;
+      
+      // Process accounts
+      for (let i = 0; i < Math.min(displayLimit, accountIndices.length); i++) {
+        const idx = accountIndices[i];
         const key = formattedKeys[idx]?.pubkey;
         if (key) {
           accountsInfo.push(`[${idx}] ${key.substring(0, 8)}...`);
@@ -43,11 +57,42 @@ function displayInstructions(instructions, accountKeys, formattedKeys) {
       }
       
       // Add "more" indicator if needed
-      if (ix.accounts.length > 5) {
-        accountsInfo.push(`+${ix.accounts.length - 5} more`);
+      if (accountIndices.length > displayLimit) {
+        accountsInfo.push(`+${accountIndices.length - displayLimit} more`);
       }
       
-      console.log(`      Accounts: ${accountsInfo.join(', ')}`);
+      console.log(`      Accounts (${accountIndices.length} total): ${accountsInfo.join(', ')}`);
+      
+      // For MEV instructions, show detailed account list
+      if (isMevInstruction && accountIndices.length > 0) {
+        console.log(`      ${colors.cyan}Account Details:${colors.reset}`);
+        
+        // Show first 15 accounts for MEV instructions with names
+        const mevDisplayLimit = Math.min(15, accountIndices.length);
+        for (let i = 0; i < mevDisplayLimit; i++) {
+          const idx = accountIndices[i];
+          const accountKey = formattedKeys[idx];
+          if (accountKey) {
+            const name = getAccountName(accountKey.pubkey);
+            const flags = [];
+            if (accountKey.accountType.includes('writable')) flags.push('W');
+            if (accountKey.accountType.includes('signer')) flags.push('S');
+            const flagStr = flags.length > 0 ? ` [${flags.join(',')}]` : '';
+            
+            if (name !== accountKey.pubkey.substring(0, 8) + '...') {
+              // Known account
+              console.log(`        #${i + 1} [${idx}] ${colors.yellow}${name}${colors.reset} - ${accountKey.pubkey}${flagStr}`);
+            } else {
+              // Unknown account
+              console.log(`        #${i + 1} [${idx}] ${accountKey.pubkey}${flagStr}`);
+            }
+          }
+        }
+        
+        if (accountIndices.length > mevDisplayLimit) {
+          console.log(`        ... and ${accountIndices.length - mevDisplayLimit} more accounts`);
+        }
+      }
     }
   });
 }
