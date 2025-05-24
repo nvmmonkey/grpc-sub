@@ -10,6 +10,7 @@ const { subscribeWithReconnect } = require('./utils/streamHandler');
 const { displayMenu, displayFilterSummary, waitForEnter } = require('./utils/menu');
 const { loadSignerAddresses } = require('./utils/signerFilter');
 const { saveTransactionDetails, extractTransactionDetails, displaySaveProgress, MAX_SAVED_TRANSACTIONS } = require('./utils/fileSaver');
+const { processTransactionForAnalysis, displayAllSignersSummary } = require('./utils/realtimeAnalyzer');
 
 // Global counters
 let transactionCount = 0;
@@ -18,8 +19,9 @@ let filteredCount = 0;
 let savedCount = 0;
 
 // Configuration
-let filterMode = 'raw'; // 'raw', 'filtered', or 'save'
+let filterMode = 'raw'; // 'raw', 'filtered', 'save', 'analyze-one', 'analyze-all'
 let targetSigners = [];
+let analyzeTarget = null; // For single signer analysis
 
 /**
  * Handle incoming transaction data
@@ -29,6 +31,36 @@ async function handleTransactionData(data) {
     try {
       transactionCount++;
       
+      // For analysis modes, process for real-time analysis
+      if (filterMode === 'analyze-one' || filterMode === 'analyze-all') {
+        const transactionDetails = await extractTransactionDetails(data, transactionCount);
+        
+        if (filterMode === 'analyze-one') {
+          // Analyze specific signer
+          if (transactionDetails.signers && transactionDetails.signers.includes(analyzeTarget)) {
+            processTransactionForAnalysis(transactionDetails, [analyzeTarget]);
+            displayedCount++;
+          }
+        } else {
+          // Analyze all signers from config
+          if (transactionDetails.signers && transactionDetails.signers.length > 0) {
+            const signer = transactionDetails.signers[0];
+            if (targetSigners.includes(signer)) {
+              processTransactionForAnalysis(transactionDetails, targetSigners);
+              displayedCount++;
+            }
+          }
+        }
+        
+        // Show progress
+        if (transactionCount % 100 === 0) {
+          console.log(`\n${colors.cyan}[Progress] Scanned: ${transactionCount} | Analyzed: ${displayedCount}${colors.reset}\n`);
+        }
+        
+        return; // Skip normal processing for analysis modes
+      }
+      
+      // Normal processing for other modes
       const options = {
         filterMode,
         targetSigners
@@ -106,24 +138,60 @@ async function startMevMonitor() {
           break;
           
         case '4':
-          console.log(`\n${colors.yellow}Launching signer analyzer...${colors.reset}`);
-          // Launch the analyzer in a new process
-          require('./analyze-signers');
-          process.exit(0);
+          filterMode = 'analyze-one';
+          console.log(`\n${colors.cyan}Real-time Analysis - Specific Signer${colors.reset}`);
           
-        case '5':
-          console.log(`\n${colors.yellow}Analyzing all signers...${colors.reset}`);
-          const { analyzeAllSigners } = require('./analyze-signers');
-          const { loadSavedTransactions } = require('./utils/fileSaver');
-          const transactions = loadSavedTransactions();
-          if (transactions.length === 0) {
-            console.log(`${colors.red}No saved transactions found. Please run option 3 first.${colors.reset}`);
+          const signers = loadSignerAddresses();
+          if (signers.length === 0) {
+            console.log(`${colors.red}No signers found in onchain-sniper-address.json${colors.reset}`);
             await waitForEnter();
             continue;
           }
-          analyzeAllSigners(transactions);
+          
+          console.log(`\n${colors.cyan}Available signers:${colors.reset}`);
+          signers.forEach((signer, index) => {
+            console.log(`${index + 1}. ${signer.address} ${signer.active ? colors.green + '(active)' : colors.red + '(inactive)'}${colors.reset}`);
+          });
+          
+          const readline = require('readline').createInterface({
+            input: process.stdin,
+            output: process.stdout
+          });
+          
+          const signerChoice = await new Promise(resolve => {
+            readline.question(`\nSelect signer (1-${signers.length}): `, resolve);
+          });
+          readline.close();
+          
+          const selectedIndex = parseInt(signerChoice) - 1;
+          if (selectedIndex >= 0 && selectedIndex < signers.length) {
+            analyzeTarget = signers[selectedIndex].address;
+            console.log(`\n${colors.green}Starting real-time analysis for: ${analyzeTarget}${colors.reset}`);
+            console.log(`${colors.yellow}Analysis files will be saved to: signer-analysis/${analyzeTarget}.json${colors.reset}`);
+            await waitForEnter();
+          } else {
+            console.log(`${colors.red}Invalid selection${colors.reset}`);
+            await waitForEnter();
+            continue;
+          }
+          break;
+          
+        case '5':
+          filterMode = 'analyze-all';
+          console.log(`\n${colors.cyan}Real-time Analysis - All Signers${colors.reset}`);
+          
+          targetSigners = loadSignerAddresses();
+          if (targetSigners.length === 0) {
+            console.log(`${colors.red}No active signers found in onchain-sniper-address.json${colors.reset}`);
+            await waitForEnter();
+            continue;
+          }
+          
+          console.log(`\n${colors.green}Starting real-time analysis for ${targetSigners.length} signers${colors.reset}`);
+          console.log(`${colors.yellow}Analysis files will be saved to: signer-analysis/ directory${colors.reset}`);
+          console.log(`${colors.yellow}Combined report: signer-analysis/combined-report.json${colors.reset}`);
           await waitForEnter();
-          continue;
+          break;
           
         case '6':
           console.log(`\n${colors.yellow}Exiting...${colors.reset}`);
@@ -135,7 +203,7 @@ async function startMevMonitor() {
           continue;
       }
       
-      if (choice === '1' || choice === '2' || choice === '3') {
+      if (choice === '1' || choice === '2' || choice === '3' || choice === '4' || choice === '5') {
         break;
       }
     } while (true);
@@ -181,7 +249,7 @@ async function startMevMonitor() {
 
     // Display startup information
     console.clear();
-    console.log(`${colors.bright}${colors.green}MEV Transaction Monitor v3.1${colors.reset}`);
+    console.log(`${colors.bright}${colors.green}MEV Transaction Monitor v3.2${colors.reset}`);
     console.log(`${colors.cyan}Connecting to gRPC stream...${colors.reset}`);
     console.log(`${colors.yellow}GRPC URL:${colors.reset} ${process.env.GRPC_URL}`);
     console.log(`${colors.yellow}Authentication:${colors.reset} ${process.env.X_TOKEN ? 'Enabled' : 'Disabled'}`);
@@ -191,6 +259,11 @@ async function startMevMonitor() {
       console.log(`${colors.yellow}Signer Filter:${colors.reset} ${colors.magenta}Active (${targetSigners.length} addresses)${colors.reset}`);
     } else if (filterMode === 'save') {
       console.log(`${colors.yellow}Save Mode:${colors.reset} ${colors.magenta}Active (saving to sub-details.json)${colors.reset}`);
+    } else if (filterMode === 'analyze-one') {
+      console.log(`${colors.yellow}Mode:${colors.reset} ${colors.cyan}Real-time Analysis - Single Signer${colors.reset}`);
+      console.log(`${colors.yellow}Target:${colors.reset} ${analyzeTarget}`);
+    } else if (filterMode === 'analyze-all') {
+      console.log(`${colors.yellow}Mode:${colors.reset} ${colors.cyan}Real-time Analysis - All Signers (${targetSigners.length})${colors.reset}`);
     } else {
       console.log(`${colors.yellow}Mode:${colors.reset} ${colors.white}Raw subscription${colors.reset}`);
     }
@@ -217,6 +290,15 @@ async function startMevMonitor() {
           console.log(`\n${colors.cyan}[Save Stats] Total scanned: ${transactionCount} | Displayed: ${displayedCount} | Saved: ${savedCount}/${MAX_SAVED_TRANSACTIONS}${colors.reset}\n`);
         }
       }, 30000); // Every 30 seconds
+    } else if (filterMode === 'analyze-one' || filterMode === 'analyze-all') {
+      setInterval(() => {
+        if (transactionCount > 0) {
+          console.log(`\n${colors.cyan}[Analysis Stats] Total scanned: ${transactionCount} | Analyzed: ${displayedCount}${colors.reset}`);
+          if (filterMode === 'analyze-all') {
+            displayAllSignersSummary();
+          }
+        }
+      }, 60000); // Every minute
     }
     
     // Show ALT cache stats periodically if ALT resolution is enabled
