@@ -19,17 +19,19 @@ async function displayMenu() {
   
   console.clear();
   console.log(`${colors.bright}${colors.cyan}═══════════════════════════════════════════════════════════════${colors.reset}`);
-  console.log(`${colors.bright}${colors.green}              MEV Transaction Monitor v3.0${colors.reset}`);
+  console.log(`${colors.bright}${colors.green}              MEV Transaction Monitor v3.2${colors.reset}`);
   console.log(`${colors.bright}${colors.cyan}═══════════════════════════════════════════════════════════════${colors.reset}\n`);
   
-  console.log(`${colors.yellow}Select monitoring mode:${colors.reset}\n`);
+  console.log(`${colors.yellow}Select mode:${colors.reset}\n`);
   console.log(`  ${colors.bright}[1]${colors.reset} ${colors.green}Raw Subscription${colors.reset} - Monitor all MEV transactions`);
   console.log(`  ${colors.bright}[2]${colors.reset} ${colors.blue}Filtered by Signer${colors.reset} - Monitor only transactions from specific signers`);
   console.log(`  ${colors.bright}[3]${colors.reset} ${colors.magenta}Save to File${colors.reset} - Monitor and save transaction details (max 100)`);
-  console.log(`  ${colors.bright}[4]${colors.reset} ${colors.red}Exit${colors.reset}\n`);
+  console.log(`  ${colors.bright}[4]${colors.reset} ${colors.cyan}Analyze Specific Signer${colors.reset} - Analyze saved data for one signer`);
+  console.log(`  ${colors.bright}[5]${colors.reset} ${colors.yellow}Analyze All Signers${colors.reset} - Analyze saved data for all signers`);
+  console.log(`  ${colors.bright}[6]${colors.reset} ${colors.red}Exit${colors.reset}\n`);
   
   return new Promise((resolve) => {
-    rl.question(`${colors.yellow}Enter your choice (1-4): ${colors.reset}`, (answer) => {
+    rl.question(`${colors.yellow}Enter your choice (1-6): ${colors.reset}`, (answer) => {
       rl.close();
       resolve(answer.trim());
     });

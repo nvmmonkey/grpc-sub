@@ -13,7 +13,9 @@
     "debug-accounts": "node debug-accounts.js",
     "test-decode": "node test-decode.js",
     "verify": "node verify-accounts.js",
-    "analyze-mev": "node analyze-mev.js"
+    "analyze-mev": "node analyze-mev.js",
+    "analyze-signers": "node analyze-signers.js",
+    "report": "node generate-report.js"
   },
   "keywords": [
     "solana",

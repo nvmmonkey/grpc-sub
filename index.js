@@ -106,6 +106,26 @@ async function startMevMonitor() {
           break;
           
         case '4':
+          console.log(`\n${colors.yellow}Launching signer analyzer...${colors.reset}`);
+          // Launch the analyzer in a new process
+          require('./analyze-signers');
+          process.exit(0);
+          
+        case '5':
+          console.log(`\n${colors.yellow}Analyzing all signers...${colors.reset}`);
+          const { analyzeAllSigners } = require('./analyze-signers');
+          const { loadSavedTransactions } = require('./utils/fileSaver');
+          const transactions = loadSavedTransactions();
+          if (transactions.length === 0) {
+            console.log(`${colors.red}No saved transactions found. Please run option 3 first.${colors.reset}`);
+            await waitForEnter();
+            continue;
+          }
+          analyzeAllSigners(transactions);
+          await waitForEnter();
+          continue;
+          
+        case '6':
           console.log(`\n${colors.yellow}Exiting...${colors.reset}`);
           process.exit(0);
           
