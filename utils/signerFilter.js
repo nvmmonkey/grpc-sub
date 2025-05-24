@@ -33,6 +33,28 @@ function loadSignerAddresses() {
 }
 
 /**
+ * Load full signer objects from JSON file
+ */
+function loadSignerObjects() {
+  try {
+    const filePath = path.join(__dirname, '..', 'onchain-sniper-address.json');
+    
+    if (!fs.existsSync(filePath)) {
+      console.log(`${colors.yellow}Warning: onchain-sniper-address.json not found${colors.reset}`);
+      return [];
+    }
+    
+    const fileContent = fs.readFileSync(filePath, 'utf8');
+    const addresses = JSON.parse(fileContent);
+    
+    return addresses; // Return all signers (both active and inactive)
+  } catch (error) {
+    console.error(`${colors.red}Error loading signer objects:${colors.reset}`, error.message);
+    return [];
+  }
+}
+
+/**
  * Check if transaction has any of the specified signers
  */
 function hasTargetSigner(accountKeys, header, targetSigners) {
@@ -56,5 +78,6 @@ function hasTargetSigner(accountKeys, header, targetSigners) {
 
 module.exports = {
   loadSignerAddresses,
+  loadSignerObjects,
   hasTargetSigner
 };

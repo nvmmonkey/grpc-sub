@@ -8,7 +8,7 @@ const { MEV_PROGRAM_ID } = require('./utils/constants');
 const { parseAndLogTransaction } = require('./utils/transactionParser');
 const { subscribeWithReconnect } = require('./utils/streamHandler');
 const { displayMenu, displayFilterSummary, waitForEnter } = require('./utils/menu');
-const { loadSignerAddresses } = require('./utils/signerFilter');
+const { loadSignerAddresses, loadSignerObjects } = require('./utils/signerFilter');
 const { saveTransactionDetails, extractTransactionDetails, displaySaveProgress, MAX_SAVED_TRANSACTIONS } = require('./utils/fileSaver');
 const { processTransactionForAnalysis, displayAllSignersSummary } = require('./utils/realtimeAnalyzer');
 
@@ -42,10 +42,11 @@ async function handleTransactionData(data) {
             displayedCount++;
           }
         } else {
-          // Analyze all signers from config
+          // Analyze all signers from config - check if ANY configured signer is in the transaction
           if (transactionDetails.signers && transactionDetails.signers.length > 0) {
-            const signer = transactionDetails.signers[0];
-            if (targetSigners.includes(signer)) {
+            // Check if any of the transaction signers is in our target list
+            const matchingSigner = transactionDetails.signers.find(signer => targetSigners.includes(signer));
+            if (matchingSigner) {
               processTransactionForAnalysis(transactionDetails, targetSigners);
               displayedCount++;
             }
@@ -141,16 +142,16 @@ async function startMevMonitor() {
           filterMode = 'analyze-one';
           console.log(`\n${colors.cyan}Real-time Analysis - Specific Signer${colors.reset}`);
           
-          const signers = loadSignerAddresses();
-          if (signers.length === 0) {
+          const signerObjects = loadSignerObjects();
+          if (signerObjects.length === 0) {
             console.log(`${colors.red}No signers found in onchain-sniper-address.json${colors.reset}`);
             await waitForEnter();
             continue;
           }
           
           console.log(`\n${colors.cyan}Available signers:${colors.reset}`);
-          signers.forEach((signer, index) => {
-            console.log(`${index + 1}. ${signer.address} ${signer.active ? colors.green + '(active)' : colors.red + '(inactive)'}${colors.reset}`);
+          signerObjects.forEach((signer, index) => {
+            console.log(`${index + 1}. ${signer.address} - ${signer.name || 'Unnamed'} ${signer.active ? colors.green + '(active)' : colors.red + '(inactive)'}${colors.reset}`);
           });
           
           const readline = require('readline').createInterface({
@@ -159,14 +160,14 @@ async function startMevMonitor() {
           });
           
           const signerChoice = await new Promise(resolve => {
-            readline.question(`\nSelect signer (1-${signers.length}): `, resolve);
+            readline.question(`\nSelect signer (1-${signerObjects.length}): `, resolve);
           });
           readline.close();
           
           const selectedIndex = parseInt(signerChoice) - 1;
-          if (selectedIndex >= 0 && selectedIndex < signers.length) {
-            analyzeTarget = signers[selectedIndex].address;
-            console.log(`\n${colors.green}Starting real-time analysis for: ${analyzeTarget}${colors.reset}`);
+          if (selectedIndex >= 0 && selectedIndex < signerObjects.length) {
+            analyzeTarget = signerObjects[selectedIndex].address;
+            console.log(`\n${colors.green}Starting real-time analysis for: ${signerObjects[selectedIndex].name || 'Unnamed'} (${analyzeTarget})${colors.reset}`);
             console.log(`${colors.yellow}Analysis files will be saved to: signer-analysis/${analyzeTarget}.json${colors.reset}`);
             await waitForEnter();
           } else {

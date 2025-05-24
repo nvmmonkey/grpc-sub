@@ -71,7 +71,7 @@ function saveSignerAnalysis(signerAddress, signerData) {
 }
 
 /**
- * Display real-time update
+ * Display real-time update with pool addresses
  */
 function displayRealtimeUpdate(signer, analysis, signerData) {
   const timestamp = new Date().toLocaleTimeString();
@@ -95,8 +95,15 @@ function displayRealtimeUpdate(signer, analysis, signerData) {
     statusLine += `${colors.cyan}${analysis.mintName || analysis.mint.substring(0, 8)}...${colors.reset} `;
   }
   
-  // Add pools
-  if (analysis.pools.length > 0) {
+  // Add pools with addresses
+  if (analysis.poolContracts && analysis.poolContracts.length > 0) {
+    const poolInfo = analysis.poolContracts
+      .filter(p => p.poolAddress)
+      .map(p => `${p.dexName}: ${p.poolAddress.substring(0, 8)}...`)
+      .join(', ');
+    statusLine += `[${poolInfo}] `;
+  } else if (analysis.pools.length > 0) {
+    // Fallback to old format if no pool contracts
     const poolNames = analysis.pools.map(p => p.name).join(', ');
     statusLine += `[${poolNames}] `;
   }
@@ -110,7 +117,7 @@ function displayRealtimeUpdate(signer, analysis, signerData) {
 }
 
 /**
- * Display signer summary
+ * Display signer summary with pool contract details
  */
 function displaySignerSummary(signer, data) {
   console.log(`\n${colors.bright}${colors.cyan}══ Summary for ${signer.substring(0, 16)}... ══${colors.reset}`);
@@ -134,6 +141,18 @@ function displaySignerSummary(signer, data) {
     console.log(`  Top mints:`);
     topMints.forEach(mint => {
       console.log(`    - ${mint.name || mint.address.substring(0, 8)}... (${mint.count} times)`);
+    });
+  }
+  
+  // Top pool contracts
+  if (data.poolContracts && Object.keys(data.poolContracts).length > 0) {
+    const topPools = Object.values(data.poolContracts)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 3);
+    
+    console.log(`  Top pool contracts:`);
+    topPools.forEach(pool => {
+      console.log(`    - ${pool.dexName} ${pool.address.substring(0, 8)}... (${pool.count} times)`);
     });
   }
   
@@ -165,7 +184,7 @@ function getAnalysisStats() {
 }
 
 /**
- * Display all signers summary
+ * Display all signers summary with pool details
  */
 function displayAllSignersSummary() {
   console.log(`\n${colors.bright}${colors.green}═══ All Signers Summary ═══${colors.reset}`);
@@ -195,6 +214,16 @@ function displayAllSignersSummary() {
       console.log(`  Top mint: ${topMint.name || topMint.address.substring(0, 8)}... (${topMint.count} times)`);
     }
     
+    // Top pool contract
+    if (data.poolContracts && Object.keys(data.poolContracts).length > 0) {
+      const topPool = Object.values(data.poolContracts)
+        .sort((a, b) => b.count - a.count)[0];
+      
+      if (topPool) {
+        console.log(`  Top pool: ${topPool.dexName} ${topPool.address.substring(0, 8)}... (${topPool.count} times)`);
+      }
+    }
+    
     console.log('');
   });
   
@@ -203,7 +232,7 @@ function displayAllSignersSummary() {
 }
 
 /**
- * Save combined report of all signers
+ * Save combined report of all signers with pool details
  */
 function saveCombinedReport() {
   const report = {
