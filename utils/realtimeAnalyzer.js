@@ -249,8 +249,8 @@ function displayDetailedUpdate(signer, analysis, signerData) {
 function displayMintTableHeader() {
   console.clear();
   console.log(`${colors.bright}${colors.white}===== TOP 10 INTERMEDIATE MINTS BY PROFIT =====${colors.reset}`);
-  console.log(`${colors.bright}${colors.cyan}Rank | Intermediate Mint                           | Total Profit | Txns   | Fails  | Net Vol/min | Total Fee  | ROI    ${colors.reset}`);
-  console.log(`${colors.dim}─────┼─────────────────────────────────────────────┼──────────────┼────────┼────────┼─────────────┼────────────┼────────${colors.reset}`);
+  console.log(`${colors.bright}${colors.cyan}Rank | Intermediate Mint                            | Total Profit | Txns   | Fails      | Net Vol/min | Total Fee  | ROI    ${colors.reset}`);
+  console.log(`${colors.dim}─────┼──────────────────────────────────────────────┼──────────────┼────────┼────────────┼─────────────┼────────────┼────────${colors.reset}`);
 }
 
 /**
@@ -275,8 +275,8 @@ function displayMintProfitTable() {
     .slice(0, 10);
   
   sortedMints.forEach((mint, index) => {
-    const rank = `#${(index + 1)}`.padEnd(3);
-    const mintAddr = mint.address.substring(0, 43).padEnd(43);
+    const rank = `#${(index + 1)}`.padEnd(4);
+    const mintAddr = mint.address.substring(0, 44).padEnd(44);
     
     // Calculate profit display
     const profit = formatNumber(mint.totalProfit).padStart(12);
@@ -313,11 +313,11 @@ function displayMintProfitTable() {
       ? `${Math.min(...mint.spamTips)}-${Math.max(...mint.spamTips)} (avg: ${avgSpam})`
       : 'N/A';
     
-    console.log(`      ${colors.dim}Jito: ${jitoRange} | Spam: ${spamRange}${colors.reset}`);
+    console.log(`      Jito: ${jitoRange} | Spam: ${spamRange}`);
   });
   
-  console.log(`${colors.dim}─────┴─────────────────────────────────────────────┴──────────────┴────────┴────────┴─────────────┴────────────┴────────${colors.reset}`);
-  console.log(`${colors.dim}Tracking ${signerTrackers.size} signers | Last updated: ${new Date().toLocaleTimeString()}${colors.reset}`);
+  console.log(`─────┴──────────────────────────────────────────────┴──────────────┴────────┴────────────┴─────────────┴────────────┴────────`);
+  console.log(`\nTracking ${signerTrackers.size} signers | Last updated: ${new Date().toLocaleTimeString()}`);
 }
 
 /**
