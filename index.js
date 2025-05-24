@@ -10,7 +10,7 @@ const { subscribeWithReconnect } = require('./utils/streamHandler');
 const { displayMenu, displayFilterSummary, waitForEnter } = require('./utils/menu');
 const { loadSignerAddresses, loadSignerObjects } = require('./utils/signerFilter');
 const { saveTransactionDetails, extractTransactionDetails, displaySaveProgress, MAX_SAVED_TRANSACTIONS } = require('./utils/fileSaver');
-const { processTransactionForAnalysis, displayAllSignersSummary } = require('./utils/realtimeAnalyzer');
+const { processTransactionForAnalysis, displayAllSignersSummary, displayMintProfitTable, displayMintPoolTable } = require('./utils/realtimeAnalyzer');
 
 // Global counters
 let transactionCount = 0;
@@ -19,9 +19,10 @@ let filteredCount = 0;
 let savedCount = 0;
 
 // Configuration
-let filterMode = 'raw'; // 'raw', 'filtered', 'save', 'analyze-one', 'analyze-all'
+let filterMode = 'raw'; // 'raw', 'filtered', 'save', 'analyze-one', 'analyze-all', 'table-mint', 'table-pool'
 let targetSigners = [];
 let analyzeTarget = null; // For single signer analysis
+let displayMode = 'detailed'; // 'detailed' or 'table'
 
 /**
  * Handle incoming transaction data
@@ -32,22 +33,22 @@ async function handleTransactionData(data) {
       transactionCount++;
       
       // For analysis modes, process for real-time analysis
-      if (filterMode === 'analyze-one' || filterMode === 'analyze-all') {
+      if (filterMode === 'analyze-one' || filterMode === 'analyze-all' || filterMode === 'table-mint' || filterMode === 'table-pool') {
         const transactionDetails = await extractTransactionDetails(data, transactionCount);
         
         if (filterMode === 'analyze-one') {
           // Analyze specific signer
           if (transactionDetails.signers && transactionDetails.signers.includes(analyzeTarget)) {
-            processTransactionForAnalysis(transactionDetails, [analyzeTarget]);
+            processTransactionForAnalysis(transactionDetails, [analyzeTarget], displayMode);
             displayedCount++;
           }
-        } else {
+        } else if (filterMode === 'analyze-all' || filterMode === 'table-mint' || filterMode === 'table-pool') {
           // Analyze all signers from config - check if ANY configured signer is in the transaction
           if (transactionDetails.signers && transactionDetails.signers.length > 0) {
             // Check if any of the transaction signers is in our target list
             const matchingSigner = transactionDetails.signers.find(signer => targetSigners.includes(signer));
             if (matchingSigner) {
-              processTransactionForAnalysis(transactionDetails, targetSigners);
+              processTransactionForAnalysis(transactionDetails, targetSigners, displayMode);
               displayedCount++;
             }
           }
@@ -140,7 +141,8 @@ async function startMevMonitor() {
           
         case '4':
           filterMode = 'analyze-one';
-          console.log(`\n${colors.cyan}Real-time Analysis - Specific Signer${colors.reset}`);
+          displayMode = 'detailed';
+          console.log(`\n${colors.cyan}Real-time Analysis - Specific Signer (Detailed Mode)${colors.reset}`);
           
           const signerObjects = loadSignerObjects();
           if (signerObjects.length === 0) {
@@ -167,7 +169,8 @@ async function startMevMonitor() {
           const selectedIndex = parseInt(signerChoice) - 1;
           if (selectedIndex >= 0 && selectedIndex < signerObjects.length) {
             analyzeTarget = signerObjects[selectedIndex].address;
-            console.log(`\n${colors.green}Starting real-time analysis for: ${signerObjects[selectedIndex].name || 'Unnamed'} (${analyzeTarget})${colors.reset}`);
+            console.log(`\n${colors.green}Starting detailed real-time analysis for: ${signerObjects[selectedIndex].name || 'Unnamed'}${colors.reset}`);
+            console.log(`${colors.yellow}Address: ${analyzeTarget}${colors.reset}`);
             console.log(`${colors.yellow}Analysis files will be saved to: signer-analysis/${analyzeTarget}.json${colors.reset}`);
             await waitForEnter();
           } else {
@@ -179,7 +182,8 @@ async function startMevMonitor() {
           
         case '5':
           filterMode = 'analyze-all';
-          console.log(`\n${colors.cyan}Real-time Analysis - All Signers${colors.reset}`);
+          displayMode = 'detailed';
+          console.log(`\n${colors.cyan}Real-time Analysis - All Signers (Detailed Mode)${colors.reset}`);
           
           targetSigners = loadSignerAddresses();
           if (targetSigners.length === 0) {
@@ -188,13 +192,49 @@ async function startMevMonitor() {
             continue;
           }
           
-          console.log(`\n${colors.green}Starting real-time analysis for ${targetSigners.length} signers${colors.reset}`);
+          console.log(`\n${colors.green}Starting detailed real-time analysis for ${targetSigners.length} signers${colors.reset}`);
           console.log(`${colors.yellow}Analysis files will be saved to: signer-analysis/ directory${colors.reset}`);
           console.log(`${colors.yellow}Combined report: signer-analysis/combined-report.json${colors.reset}`);
           await waitForEnter();
           break;
           
         case '6':
+          filterMode = 'table-mint';
+          displayMode = 'table';
+          console.log(`\n${colors.bright}${colors.magenta}Mint Profit Table Mode${colors.reset}`);
+          
+          targetSigners = loadSignerAddresses();
+          if (targetSigners.length === 0) {
+            console.log(`${colors.red}No active signers found in onchain-sniper-address.json${colors.reset}`);
+            await waitForEnter();
+            continue;
+          }
+          
+          console.log(`\n${colors.green}Starting real-time mint profit analysis${colors.reset}`);
+          console.log(`${colors.yellow}Tracking ${targetSigners.length} signers${colors.reset}`);
+          console.log(`${colors.yellow}Table will update every 10 seconds${colors.reset}`);
+          await waitForEnter();
+          break;
+          
+        case '7':
+          filterMode = 'table-pool';
+          displayMode = 'table';
+          console.log(`\n${colors.bright}${colors.blue}Mint & Pool Table Mode${colors.reset}`);
+          
+          targetSigners = loadSignerAddresses();
+          if (targetSigners.length === 0) {
+            console.log(`${colors.red}No active signers found in onchain-sniper-address.json${colors.reset}`);
+            await waitForEnter();
+            continue;
+          }
+          
+          console.log(`\n${colors.green}Starting real-time mint & pool profit analysis${colors.reset}`);
+          console.log(`${colors.yellow}Tracking ${targetSigners.length} signers${colors.reset}`);
+          console.log(`${colors.yellow}Table will update every 10 seconds${colors.reset}`);
+          await waitForEnter();
+          break;
+          
+        case '8':
           console.log(`\n${colors.yellow}Exiting...${colors.reset}`);
           process.exit(0);
           
@@ -204,7 +244,7 @@ async function startMevMonitor() {
           continue;
       }
       
-      if (choice === '1' || choice === '2' || choice === '3' || choice === '4' || choice === '5') {
+      if (choice === '1' || choice === '2' || choice === '3' || choice === '4' || choice === '5' || choice === '6' || choice === '7') {
         break;
       }
     } while (true);
@@ -265,6 +305,10 @@ async function startMevMonitor() {
       console.log(`${colors.yellow}Target:${colors.reset} ${analyzeTarget}`);
     } else if (filterMode === 'analyze-all') {
       console.log(`${colors.yellow}Mode:${colors.reset} ${colors.cyan}Real-time Analysis - All Signers (${targetSigners.length})${colors.reset}`);
+    } else if (filterMode === 'table-mint') {
+      console.log(`${colors.yellow}Mode:${colors.reset} ${colors.bright}${colors.magenta}Mint Profit Table (${targetSigners.length} signers)${colors.reset}`);
+    } else if (filterMode === 'table-pool') {
+      console.log(`${colors.yellow}Mode:${colors.reset} ${colors.bright}${colors.blue}Mint & Pool Table (${targetSigners.length} signers)${colors.reset}`);
     } else {
       console.log(`${colors.yellow}Mode:${colors.reset} ${colors.white}Raw subscription${colors.reset}`);
     }
@@ -300,6 +344,20 @@ async function startMevMonitor() {
           }
         }
       }, 60000); // Every minute
+    } else if (filterMode === 'table-mint') {
+      // Update table every 10 seconds
+      setInterval(() => {
+        if (displayedCount > 0) {
+          displayMintProfitTable();
+        }
+      }, 10000);
+    } else if (filterMode === 'table-pool') {
+      // Update table every 10 seconds
+      setInterval(() => {
+        if (displayedCount > 0) {
+          displayMintPoolTable();
+        }
+      }, 10000);
     }
     
     // Show ALT cache stats periodically if ALT resolution is enabled
