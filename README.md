@@ -1,4 +1,4 @@
-# MEV Transaction Monitor v3.1
+# MEV Transaction Monitor v3.2
 
 Real-time monitoring of Solana MEV program transactions using Yellowstone gRPC with interactive menu and signer filtering.
 
@@ -118,17 +118,62 @@ npm start
    - Displays progress statistics every 100 filtered transactions
    - Shows periodic stats every 30 seconds
 
-3. **Exit** - Close the monitor
+3. **Save to File** - Monitor and save transaction details
+   - Saves up to 100 most recent transactions to `sub-details.json`
+   - Automatically rotates when limit is reached (oldest replaced)
+   - Useful for offline analysis
 
-### Filtered Mode Features:
+4. **Real-time Analysis - Single Signer** - Detailed analysis of one signer
+   - Select a specific signer from your configuration
+   - Tracks detailed metrics: transaction types, tip ranges, pools used
+   - Saves analysis to `signer-analysis/{address}.json`
+   - Shows periodic summaries of signer activity
 
+5. **Real-time Analysis - All Signers** - Comprehensive market analysis
+   - Tracks EVERY signer that appears in MEV transactions (no filtering)
+   - Provides complete market overview, not limited to configured signers
+   - Individual analysis files saved to `signer-analysis/` directory
+   - Combined report saved to `signer-analysis/combined-report.json`
+
+6. **Mint Profit Table** - Real-time profit tracking by token
+   - Displays top 10 most profitable mints in table format
+   - Shows profit, transaction counts, success/fail rates, ROI
+   - Per-mint Jito/Spam tip ranges with averages
+   - Updates in real-time with each transaction
+   - Tracks ALL signers automatically
+
+7. **Mint & Pool Table** - Compact mint analysis with pool details
+   - Top 10 mints with associated DEX pools
+   - Compact format: profit, transactions, and ROI on one line
+   - Shows top 3 pools for each mint
+   - Jito/Spam statistics per mint
+   - Updates in real-time
+
+8. **Exit** - Close the monitor
+
+### Mode-Specific Features:
+
+#### Filtered Mode (Option 2):
 - Highlights detected target signers with `◆ TARGET SIGNER DETECTED ◆`
 - Shows which signer was detected and at what index
 - Displays filtering statistics (scanned, displayed, filtered)
 - Only processes transactions where target addresses are actual signers (not just included accounts)
 
+#### Analysis Modes (Options 4-7):
+- **Single Signer Analysis**: Deep dive into one signer's behavior
+- **All Signers Analysis**: Complete market overview tracking ALL signers
+- **Profit Tables**: Real-time updating tables with sortable metrics
+- **Pool Tracking**: Identifies which DEX pools are being used
+- Statistics include:
+  - Transaction success/failure rates
+  - Jito vs Spam transaction distribution
+  - Tip amount ranges and averages
+  - Most frequently traded mints
+  - Pool usage patterns
+
 ## Output Format
 
+### Transaction Display (Options 1-3):
 Each transaction is displayed with:
 - Colored headers for easy identification
 - Transaction signature and slot number
@@ -143,6 +188,27 @@ In filtered mode, matching transactions also show:
 - Target signer highlight
 - Signer address and index
 - Periodic statistics
+
+### Analysis Display (Options 4-5):
+- Real-time transaction updates with key metrics
+- Periodic summaries showing:
+  - Total transactions and success rates
+  - Tip ranges for Jito and Spam transactions
+  - Top mints and pools used
+  - Cumulative statistics
+
+### Table Display (Options 6-7):
+- **Mint Profit Table**:
+  - Rank, mint address, total profit
+  - Transaction counts (success.failed format)
+  - Net volume, total fees, ROI percentage
+  - Per-mint Jito/Spam tip ranges
+  
+- **Mint & Pool Table**:
+  - Compact mint info with profit and ROI
+  - Jito/Spam statistics on one line
+  - Top 3 DEX pools for each mint
+  - Transaction counts per pool
 
 ## Requirements
 

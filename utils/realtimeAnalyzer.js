@@ -72,14 +72,14 @@ function processTransactionForAnalysis(transaction, targetSigners = null, displa
   
   const signer = transaction.signers[0];
   
-  // For table modes, track all signers (no filtering)
-  if (displayMode === 'table') {
+  // For table modes OR when targetSigners is null, track all signers (no filtering)
+  if (displayMode === 'table' || targetSigners === null) {
     // Initialize tracker if needed
     if (!signerTrackers.has(signer)) {
       startTrackingSigner(signer);
     }
   } else if (targetSigners && !targetSigners.includes(signer)) {
-    // For non-table modes, check if we should track this signer
+    // For non-table modes with specific targets, check if we should track this signer
     return;
   } else {
     // Initialize tracker if needed
@@ -264,7 +264,7 @@ function formatNumber(num) {
 }
 
 /**
- * Display mint profit table with enhanced formatting
+ * Display mint profit table with per-mint Jito/Spam ranges
  */
 function displayMintProfitTable() {
   displayMintTableHeader();
@@ -276,7 +276,7 @@ function displayMintProfitTable() {
   
   sortedMints.forEach((mint, index) => {
     const rank = `#${(index + 1)}`.padEnd(3);
-    const mintAddr = mint.address.padEnd(43);
+    const mintAddr = mint.address.substring(0, 43).padEnd(43);
     
     // Calculate profit display
     const profit = formatNumber(mint.totalProfit).padStart(12);
@@ -284,7 +284,7 @@ function displayMintProfitTable() {
     // Transaction counts
     const txnCount = `${mint.successCount}.${mint.failCount}`.padEnd(6);
     const failPercent = mint.txnCount > 0 ? ((mint.failCount / mint.txnCount) * 100).toFixed(2) : '0.00';
-    const fails = `${mint.failCount} ${failPercent}%`.padEnd(6);
+    const fails = `${mint.failCount} ${failPercent}%`.padEnd(10);
     
     // Net volume per minute (assuming 1 min intervals)
     const netVol = formatNumber(Math.abs(mint.netVolume)).padStart(11);
@@ -296,52 +296,8 @@ function displayMintProfitTable() {
     const roi = mint.totalFees > 0 ? ((mint.totalProfit / mint.totalFees) * 100).toFixed(2) : '0.00';
     
     console.log(` ${rank} | ${mintAddr} | ${profit} | ${txnCount} | ${fails} | ${netVol} | ${totalFee} | ${roi.padStart(6)}%`);
-  });
-  
-  // Add Jito and Spam tip ranges with averages
-  console.log(`${colors.dim}─────┴─────────────────────────────────────────────┴──────────────┴────────┴────────┴─────────────┴────────────┴────────${colors.reset}`);
-  
-  // Calculate global averages
-  let totalJitoTips = [];
-  let totalSpamTips = [];
-  
-  mintProfitStats.forEach(mint => {
-    totalJitoTips = totalJitoTips.concat(mint.jitoTips);
-    totalSpamTips = totalSpamTips.concat(mint.spamTips);
-  });
-  
-  const avgJito = totalJitoTips.length > 0 ? Math.round(totalJitoTips.reduce((a, b) => a + b, 0) / totalJitoTips.length) : 0;
-  const avgSpam = totalSpamTips.length > 0 ? Math.round(totalSpamTips.reduce((a, b) => a + b, 0) / totalSpamTips.length) : 0;
-  
-  const jitoRange = totalJitoTips.length > 0 
-    ? `${Math.min(...totalJitoTips)}-${Math.max(...totalJitoTips)} (avg: ${avgJito})`
-    : 'N/A';
-  
-  const spamRange = totalSpamTips.length > 0
-    ? `${Math.min(...totalSpamTips)}-${Math.max(...totalSpamTips)} (avg: ${avgSpam})`
-    : 'N/A';
-  
-  console.log(`\n${colors.yellow}Jito Range:${colors.reset} ${jitoRange} | ${colors.yellow}Spam Range:${colors.reset} ${spamRange}`);
-  console.log(`${colors.dim}Tracking ${signerTrackers.size} signers | Last updated: ${new Date().toLocaleTimeString()}${colors.reset}`);
-}
-
-/**
- * Display mint pool table with details
- */
-function displayMintPoolTable() {
-  console.clear();
-  console.log(`${colors.bright}${colors.white}===== TOP 10 INTERMEDIATE MINTS BY PROFIT WITH POOL DETAILS =====${colors.reset}`);
-  
-  // Sort mints by total profit
-  const sortedMints = Array.from(mintProfitStats.values())
-    .sort((a, b) => b.totalProfit - a.totalProfit)
-    .slice(0, 10);
-  
-  sortedMints.forEach((mint, index) => {
-    // Display mint header
-    console.log(`\n${colors.bright}${colors.yellow}#${index + 1} Mint: ${mint.address}${colors.reset}`);
     
-    // Calculate averages
+    // Add Jito/Spam ranges per mint (indented below)
     const avgJito = mint.jitoTips.length > 0 
       ? Math.round(mint.jitoTips.reduce((a, b) => a + b, 0) / mint.jitoTips.length) 
       : 0;
@@ -349,27 +305,72 @@ function displayMintPoolTable() {
       ? Math.round(mint.spamTips.reduce((a, b) => a + b, 0) / mint.spamTips.length) 
       : 0;
     
-    // ROI calculation
-    const roi = mint.totalFees > 0 ? ((mint.totalProfit / mint.totalFees) * 100).toFixed(2) : '0.00';
+    const jitoRange = mint.jitoTips.length > 0 
+      ? `${Math.min(...mint.jitoTips)}-${Math.max(...mint.jitoTips)} (avg: ${avgJito})`
+      : 'N/A';
     
-    console.log(`    ${colors.cyan}Profit: ${mint.totalProfit >= 0 ? colors.green : colors.red}${mint.totalProfit >= 0 ? '+' : ''}${formatNumber(mint.totalProfit)}${colors.reset} │ Txns: ${mint.txnCount} │ Success: ${mint.successCount} │ Failed: ${mint.failCount} │ ROI: ${roi}%`);
-    console.log(`    ${colors.cyan}Jito:${colors.reset} ${mint.jitoTips.length > 0 ? `${Math.min(...mint.jitoTips)}-${Math.max(...mint.jitoTips)} (avg: ${avgJito})` : 'N/A'} │ ${colors.cyan}Spam:${colors.reset} ${mint.spamTips.length > 0 ? `${Math.min(...mint.spamTips)}-${Math.max(...mint.spamTips)} (avg: ${avgSpam})` : 'N/A'}`);
+    const spamRange = mint.spamTips.length > 0
+      ? `${Math.min(...mint.spamTips)}-${Math.max(...mint.spamTips)} (avg: ${avgSpam})`
+      : 'N/A';
     
-    // Get top pools for this mint
+    console.log(`      ${colors.dim}Jito: ${jitoRange} | Spam: ${spamRange}${colors.reset}`);
+  });
+  
+  console.log(`${colors.dim}─────┴─────────────────────────────────────────────┴──────────────┴────────┴────────┴─────────────┴────────────┴────────${colors.reset}`);
+  console.log(`${colors.dim}Tracking ${signerTrackers.size} signers | Last updated: ${new Date().toLocaleTimeString()}${colors.reset}`);
+}
+
+/**
+ * Display mint pool table with compact details
+ */
+function displayMintPoolTable() {
+  console.clear();
+  console.log(`${colors.bright}${colors.white}===== TOP 10 MINTS WITH POOL DETAILS =====${colors.reset}`);
+  
+  // Sort mints by total profit
+  const sortedMints = Array.from(mintProfitStats.values())
+    .sort((a, b) => b.totalProfit - a.totalProfit)
+    .slice(0, 10);
+  
+  sortedMints.forEach((mint, index) => {
+    // Compact header with all info on one line
+    const profit = mint.totalProfit >= 0 ? colors.green : colors.red;
+    const profitStr = `${mint.totalProfit >= 0 ? '+' : ''}${formatNumber(mint.totalProfit)}`;
+    const roi = mint.totalFees > 0 ? ((mint.totalProfit / mint.totalFees) * 100).toFixed(1) : '0.0';
+    
+    console.log(`\n${colors.yellow}#${index + 1}${colors.reset} ${mint.address.substring(0, 44)}...`);
+    console.log(`   ${profit}${profitStr}${colors.reset} | ${mint.txnCount} txns (${mint.successCount}✓/${mint.failCount}✗) | ROI: ${roi}%`);
+    
+    // Jito/Spam on same line
+    const avgJito = mint.jitoTips.length > 0 
+      ? Math.round(mint.jitoTips.reduce((a, b) => a + b, 0) / mint.jitoTips.length) 
+      : 0;
+    const avgSpam = mint.spamTips.length > 0 
+      ? Math.round(mint.spamTips.reduce((a, b) => a + b, 0) / mint.spamTips.length) 
+      : 0;
+    
+    const jitoStr = mint.jitoTips.length > 0 
+      ? `${Math.min(...mint.jitoTips)}-${Math.max(...mint.jitoTips)} (avg: ${avgJito})`
+      : 'None';
+    const spamStr = mint.spamTips.length > 0 
+      ? `${Math.min(...mint.spamTips)}-${Math.max(...mint.spamTips)} (avg: ${avgSpam})`
+      : 'None';
+    
+    console.log(`   J: ${jitoStr} | S: ${spamStr}`);
+    
+    // Top 3 pools on one line each
     const topPools = Array.from(mint.pools.values())
       .sort((a, b) => b.count - a.count)
-      .slice(0, 5);
+      .slice(0, 3);
     
     if (topPools.length > 0) {
-      console.log(`    ${colors.dim}Top Pools:${colors.reset}`);
-      topPools.forEach(pool => {
-        console.log(`      • ${colors.green}${pool.dexName}${colors.reset}: ${pool.address} (${pool.count} txns)`);
+      topPools.forEach((pool, i) => {
+        console.log(`   ${i+1}. ${pool.dexName}: ${pool.address.substring(0, 44)}... (${pool.count}x)`);
       });
     }
   });
   
-  console.log(`\n${colors.bright}${colors.cyan}${'═'.repeat(120)}${colors.reset}`);
-  console.log(`${colors.dim}Tracking ${signerTrackers.size} signers | Last updated: ${new Date().toLocaleTimeString()}${colors.reset}`);
+  console.log(`\n${colors.dim}Tracking ${signerTrackers.size} signers | Updated: ${new Date().toLocaleTimeString()}${colors.reset}`);
 }
 
 /**

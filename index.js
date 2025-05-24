@@ -43,27 +43,15 @@ async function handleTransactionData(data) {
             displayedCount++;
           }
         } else if (filterMode === 'analyze-all' || filterMode === 'table-mint' || filterMode === 'table-pool') {
-          // For table modes, process ALL transactions (no signer filtering)
-          if (filterMode === 'table-mint' || filterMode === 'table-pool') {
-            processTransactionForAnalysis(transactionDetails, null, displayMode);
-            displayedCount++;
-            
-            // Update table display immediately
-            if (filterMode === 'table-mint') {
-              displayMintProfitTable();
-            } else {
-              displayMintPoolTable();
-            }
-          } else {
-            // Analyze all signers from config - check if ANY configured signer is in the transaction
-            if (transactionDetails.signers && transactionDetails.signers.length > 0) {
-              // Check if any of the transaction signers is in our target list
-              const matchingSigner = transactionDetails.signers.find(signer => targetSigners.includes(signer));
-              if (matchingSigner) {
-                processTransactionForAnalysis(transactionDetails, targetSigners, displayMode);
-                displayedCount++;
-              }
-            }
+          // For ALL these modes, process ALL transactions (no signer filtering)
+          processTransactionForAnalysis(transactionDetails, null, displayMode);
+          displayedCount++;
+          
+          // Update table display immediately for table modes
+          if (filterMode === 'table-mint') {
+            displayMintProfitTable();
+          } else if (filterMode === 'table-pool') {
+            displayMintPoolTable();
           }
         }
         
@@ -197,15 +185,8 @@ async function startMevMonitor() {
           filterMode = 'analyze-all';
           displayMode = 'detailed';
           console.log(`\n${colors.cyan}Real-time Analysis - All Signers (Detailed Mode)${colors.reset}`);
-          
-          targetSigners = loadSignerAddresses();
-          if (targetSigners.length === 0) {
-            console.log(`${colors.red}No active signers found in onchain-sniper-address.json${colors.reset}`);
-            await waitForEnter();
-            continue;
-          }
-          
-          console.log(`\n${colors.green}Starting detailed real-time analysis for ${targetSigners.length} signers${colors.reset}`);
+          console.log(`\n${colors.green}Starting detailed real-time analysis for ALL signers${colors.reset}`);
+          console.log(`${colors.yellow}This will track EVERY signer that appears in MEV transactions${colors.reset}`);
           console.log(`${colors.yellow}Analysis files will be saved to: signer-analysis/ directory${colors.reset}`);
           console.log(`${colors.yellow}Combined report: signer-analysis/combined-report.json${colors.reset}`);
           await waitForEnter();

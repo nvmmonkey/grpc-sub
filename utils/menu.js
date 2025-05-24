@@ -27,7 +27,7 @@ async function displayMenu() {
   console.log(`  ${colors.bright}[2]${colors.reset} ${colors.blue}Filtered by Signer${colors.reset} - Monitor only transactions from specific signers`);
   console.log(`  ${colors.bright}[3]${colors.reset} ${colors.magenta}Save to File${colors.reset} - Monitor and save transaction details (max 100)`);
   console.log(`  ${colors.bright}[4]${colors.reset} ${colors.cyan}Real-time Analysis - Single Signer${colors.reset} - Detailed stream & analyze one signer`);
-  console.log(`  ${colors.bright}[5]${colors.reset} ${colors.yellow}Real-time Analysis - All Signers${colors.reset} - Detailed stream & analyze all signers`);
+  console.log(`  ${colors.bright}[5]${colors.reset} ${colors.yellow}Real-time Analysis - All Signers${colors.reset} - Stream & analyze EVERY signer (no filter)`);
   console.log(`  ${colors.bright}[6]${colors.reset} ${colors.bright}${colors.magenta}Mint Profit Table${colors.reset} - Real-time mint profit analysis table`);
   console.log(`  ${colors.bright}[7]${colors.reset} ${colors.bright}${colors.blue}Mint & Pool Table${colors.reset} - Real-time mint profit with pool details`);
   console.log(`  ${colors.bright}[8]${colors.reset} ${colors.red}Exit${colors.reset}\n`);
