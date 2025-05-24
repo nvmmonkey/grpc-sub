@@ -44,11 +44,17 @@ function extractPoolsFromMevInstruction(mevInstruction, allAccounts) {
   const useFlashloan = mevInstruction.dataBase64 && 
     Buffer.from(mevInstruction.dataBase64, 'base64')[24] === 1;
   
-  // Start after fixed accounts (7 or 9 with flashloan)
-  const startIdx = useFlashloan ? 9 : 7;
+  // According to the structure:
+  // Fixed accounts: 0-6
+  // If flashloan: 7-8 are flashloan accounts
+  // Then for each token:
+  //   - Token mint (position 9 or 7)
+  //   - Wallet token account (position 10 or 8)
+  //   - Pool accounts start at position 11 or 9
+  const poolStartIdx = useFlashloan ? 11 : 9;
   
   // Look for DEX programs and their associated pools
-  for (let i = startIdx; i < mevInstruction.accountKeys.length; i++) {
+  for (let i = poolStartIdx; i < mevInstruction.accountKeys.length; i++) {
     const account = mevInstruction.accountKeys[i];
     
     // Check if this is a DEX program
@@ -172,14 +178,38 @@ function analyzeTransactionType(transaction) {
   if (transaction.instructions) {
     const mevInstruction = transaction.instructions.find(ix => ix.isMevInstruction);
     if (mevInstruction && mevInstruction.accountKeys) {
-      // Token mint is typically at position 9 (after fixed accounts + flashloan if enabled)
+      // Parse instruction data to check flashloan flag
       const useFlashloan = mevInstruction.dataBase64 && 
         Buffer.from(mevInstruction.dataBase64, 'base64')[24] === 1;
-      const tokenMintPos = useFlashloan ? 9 : 7;
       
-      if (mevInstruction.accountKeys[tokenMintPos]) {
-        result.mint = mevInstruction.accountKeys[tokenMintPos].pubkey;
-        result.mintName = mevInstruction.accountKeys[tokenMintPos].name;
+      // According to the onchain program structure:
+      // Fixed accounts: 0-6 (wallet, base_mint, fee_collector, wallet_base_account, token_program, system_program, associated_token_program)
+      // If flashloan: 7-8 are flashloan accounts (flashloan program, vault token account)
+      // Then for each token X:
+      //   - Token X mint
+      //   - Wallet X account
+      //   - Pool accounts...
+      
+      // So the first token mint is at:
+      // - Position 9 if flashloan is used
+      // - Position 7 if flashloan is not used
+      const firstTokenPos = useFlashloan ? 9 : 7;
+      
+      // Make sure we have enough accounts
+      if (mevInstruction.accountKeys.length > firstTokenPos) {
+        const mintAccount = mevInstruction.accountKeys[firstTokenPos];
+        
+        // Verify this is not a known program or system account
+        if (mintAccount && mintAccount.pubkey && 
+            !DEX_PROGRAMS[mintAccount.pubkey] && 
+            mintAccount.pubkey !== '5LFpzqgsxrSfhKwbaFiAEJ2kbc9QyimjKueswsyU4T3o' && // Flashloan program
+            mintAccount.pubkey !== 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA' && // Token program  
+            mintAccount.pubkey !== '11111111111111111111111111111111' && // System program
+            mintAccount.pubkey !== 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL') { // Associated token program
+          
+          result.mint = mintAccount.pubkey;
+          result.mintName = mintAccount.name;
+        }
       }
 
       // Extract detailed pool information
