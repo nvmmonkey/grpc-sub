@@ -43,13 +43,26 @@ async function handleTransactionData(data) {
             displayedCount++;
           }
         } else if (filterMode === 'analyze-all' || filterMode === 'table-mint' || filterMode === 'table-pool') {
-          // Analyze all signers from config - check if ANY configured signer is in the transaction
-          if (transactionDetails.signers && transactionDetails.signers.length > 0) {
-            // Check if any of the transaction signers is in our target list
-            const matchingSigner = transactionDetails.signers.find(signer => targetSigners.includes(signer));
-            if (matchingSigner) {
-              processTransactionForAnalysis(transactionDetails, targetSigners, displayMode);
-              displayedCount++;
+          // For table modes, process ALL transactions (no signer filtering)
+          if (filterMode === 'table-mint' || filterMode === 'table-pool') {
+            processTransactionForAnalysis(transactionDetails, null, displayMode);
+            displayedCount++;
+            
+            // Update table display immediately
+            if (filterMode === 'table-mint') {
+              displayMintProfitTable();
+            } else {
+              displayMintPoolTable();
+            }
+          } else {
+            // Analyze all signers from config - check if ANY configured signer is in the transaction
+            if (transactionDetails.signers && transactionDetails.signers.length > 0) {
+              // Check if any of the transaction signers is in our target list
+              const matchingSigner = transactionDetails.signers.find(signer => targetSigners.includes(signer));
+              if (matchingSigner) {
+                processTransactionForAnalysis(transactionDetails, targetSigners, displayMode);
+                displayedCount++;
+              }
             }
           }
         }
@@ -202,17 +215,9 @@ async function startMevMonitor() {
           filterMode = 'table-mint';
           displayMode = 'table';
           console.log(`\n${colors.bright}${colors.magenta}Mint Profit Table Mode${colors.reset}`);
-          
-          targetSigners = loadSignerAddresses();
-          if (targetSigners.length === 0) {
-            console.log(`${colors.red}No active signers found in onchain-sniper-address.json${colors.reset}`);
-            await waitForEnter();
-            continue;
-          }
-          
           console.log(`\n${colors.green}Starting real-time mint profit analysis${colors.reset}`);
-          console.log(`${colors.yellow}Tracking ${targetSigners.length} signers${colors.reset}`);
-          console.log(`${colors.yellow}Table will update every 10 seconds${colors.reset}`);
+          console.log(`${colors.yellow}Tracking ALL signers automatically${colors.reset}`);
+          console.log(`${colors.yellow}Table updates in real-time with each transaction${colors.reset}`);
           await waitForEnter();
           break;
           
@@ -220,17 +225,9 @@ async function startMevMonitor() {
           filterMode = 'table-pool';
           displayMode = 'table';
           console.log(`\n${colors.bright}${colors.blue}Mint & Pool Table Mode${colors.reset}`);
-          
-          targetSigners = loadSignerAddresses();
-          if (targetSigners.length === 0) {
-            console.log(`${colors.red}No active signers found in onchain-sniper-address.json${colors.reset}`);
-            await waitForEnter();
-            continue;
-          }
-          
           console.log(`\n${colors.green}Starting real-time mint & pool profit analysis${colors.reset}`);
-          console.log(`${colors.yellow}Tracking ${targetSigners.length} signers${colors.reset}`);
-          console.log(`${colors.yellow}Table will update every 10 seconds${colors.reset}`);
+          console.log(`${colors.yellow}Tracking ALL signers automatically${colors.reset}`);
+          console.log(`${colors.yellow}Table updates in real-time with each transaction${colors.reset}`);
           await waitForEnter();
           break;
           
@@ -306,9 +303,11 @@ async function startMevMonitor() {
     } else if (filterMode === 'analyze-all') {
       console.log(`${colors.yellow}Mode:${colors.reset} ${colors.cyan}Real-time Analysis - All Signers (${targetSigners.length})${colors.reset}`);
     } else if (filterMode === 'table-mint') {
-      console.log(`${colors.yellow}Mode:${colors.reset} ${colors.bright}${colors.magenta}Mint Profit Table (${targetSigners.length} signers)${colors.reset}`);
+      console.log(`${colors.yellow}Mode:${colors.reset} ${colors.bright}${colors.magenta}Mint Profit Table - Real-time Updates${colors.reset}`);
+      console.log(`${colors.yellow}Tracking:${colors.reset} ALL signers (no filtering)`);
     } else if (filterMode === 'table-pool') {
-      console.log(`${colors.yellow}Mode:${colors.reset} ${colors.bright}${colors.blue}Mint & Pool Table (${targetSigners.length} signers)${colors.reset}`);
+      console.log(`${colors.yellow}Mode:${colors.reset} ${colors.bright}${colors.blue}Mint & Pool Table - Real-time Updates${colors.reset}`);
+      console.log(`${colors.yellow}Tracking:${colors.reset} ALL signers (no filtering)`);
     } else {
       console.log(`${colors.yellow}Mode:${colors.reset} ${colors.white}Raw subscription${colors.reset}`);
     }
@@ -344,21 +343,8 @@ async function startMevMonitor() {
           }
         }
       }, 60000); // Every minute
-    } else if (filterMode === 'table-mint') {
-      // Update table every 10 seconds
-      setInterval(() => {
-        if (displayedCount > 0) {
-          displayMintProfitTable();
-        }
-      }, 10000);
-    } else if (filterMode === 'table-pool') {
-      // Update table every 10 seconds
-      setInterval(() => {
-        if (displayedCount > 0) {
-          displayMintPoolTable();
-        }
-      }, 10000);
     }
+    // Table modes update in real-time, no interval needed
     
     // Show ALT cache stats periodically if ALT resolution is enabled
     if (process.env.RPC_URL && process.env.ALT_RESOLUTION !== 'false') {

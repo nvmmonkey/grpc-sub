@@ -14,6 +14,9 @@ if (!fs.existsSync(ANALYSIS_DIR)) {
 // Active signer trackers
 const signerTrackers = new Map();
 
+// Mint statistics for table display
+const mintProfitStats = new Map();
+
 /**
  * Load existing signer data from file if it exists
  */
@@ -69,14 +72,20 @@ function processTransactionForAnalysis(transaction, targetSigners = null, displa
   
   const signer = transaction.signers[0];
   
-  // Check if we should track this signer
-  if (targetSigners && !targetSigners.includes(signer)) {
+  // For table modes, track all signers (no filtering)
+  if (displayMode === 'table') {
+    // Initialize tracker if needed
+    if (!signerTrackers.has(signer)) {
+      startTrackingSigner(signer);
+    }
+  } else if (targetSigners && !targetSigners.includes(signer)) {
+    // For non-table modes, check if we should track this signer
     return;
-  }
-  
-  // Initialize tracker if needed
-  if (!signerTrackers.has(signer)) {
-    startTrackingSigner(signer);
+  } else {
+    // Initialize tracker if needed
+    if (!signerTrackers.has(signer)) {
+      startTrackingSigner(signer);
+    }
   }
   
   // Analyze transaction
@@ -86,14 +95,79 @@ function processTransactionForAnalysis(transaction, targetSigners = null, displa
   const signerData = signerTrackers.get(signer);
   updateSignerData(signerData, analysis);
   
+  // Update mint profit stats for table display
+  if (displayMode === 'table' && analysis.mint) {
+    updateMintProfitStats(analysis, signer);
+  }
+  
   // Save to file
   saveSignerAnalysis(signer, signerData);
   
   // Display based on mode
   if (displayMode === 'detailed') {
     displayDetailedUpdate(signer, analysis, signerData);
-  } else if (displayMode === 'table') {
-    // Table mode will be handled by periodic updates
+  }
+  // Table mode updates are handled by the table display functions
+}
+
+/**
+ * Update mint profit statistics
+ */
+function updateMintProfitStats(analysis, signer) {
+  const mintAddress = analysis.mint;
+  
+  if (!mintProfitStats.has(mintAddress)) {
+    mintProfitStats.set(mintAddress, {
+      address: mintAddress,
+      totalProfit: 0,
+      netVolume: 0,
+      totalFees: 0,
+      txnCount: 0,
+      failCount: 0,
+      successCount: 0,
+      jitoTips: [],
+      spamTips: [],
+      signers: new Set(),
+      pools: new Map()
+    });
+  }
+  
+  const stats = mintProfitStats.get(mintAddress);
+  stats.txnCount++;
+  stats.signers.add(signer);
+  
+  if (analysis.failed) {
+    stats.failCount++;
+  } else {
+    stats.successCount++;
+  }
+  
+  // Update tips and profit
+  if (analysis.type === 'jito' && analysis.tipAmount > 0) {
+    stats.jitoTips.push(analysis.tipAmount);
+    stats.totalProfit += analysis.tipAmount;
+    stats.netVolume += analysis.tipAmount;
+  } else if (analysis.type === 'spam' && analysis.tipAmount > 0) {
+    stats.spamTips.push(analysis.tipAmount);
+    stats.totalFees += analysis.tipAmount;
+    stats.netVolume -= analysis.tipAmount;
+  }
+  
+  // Update pool information
+  if (analysis.poolContracts) {
+    analysis.poolContracts.forEach(pool => {
+      if (pool.poolAddress) {
+        const poolKey = `${pool.dexName}:${pool.poolAddress}`;
+        if (!stats.pools.has(poolKey)) {
+          stats.pools.set(poolKey, {
+            dexName: pool.dexName,
+            address: pool.poolAddress,
+            count: 0
+          });
+        }
+        stats.pools.get(poolKey).count++;
+      }
+    });
   }
 }
 
@@ -170,133 +244,132 @@ function displayDetailedUpdate(signer, analysis, signerData) {
 }
 
 /**
- * Display table header for mint analysis
+ * Display mint profit table header
  */
 function displayMintTableHeader() {
   console.clear();
-  console.log(`${colors.bright}${colors.green}═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════${colors.reset}`);
-  console.log(`${colors.bright}${colors.green}                                                                       REAL-TIME MINT PROFIT ANALYSIS                                                                                                                 ${colors.reset}`);
-  console.log(`${colors.bright}${colors.green}═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════${colors.reset}`);
-  console.log(`${colors.bright}${colors.cyan}Rank │ Mint Address                                         │ Total Profit  │ Txn Count │ Fail Count │ Jito Tip Range        │ Spam Tip Range        │ ROI     ${colors.reset}`);
-  console.log(`${colors.bright}${colors.cyan}─────┼──────────────────────────────────────────────────────┼───────────────┼───────────┼────────────┼───────────────────────┼───────────────────────┼─────────${colors.reset}`);
+  console.log(`${colors.bright}${colors.white}===== TOP 10 INTERMEDIATE MINTS BY PROFIT =====${colors.reset}`);
+  console.log(`${colors.bright}${colors.cyan}Rank | Intermediate Mint                           | Total Profit | Txns   | Fails  | Net Vol/min | Total Fee  | ROI    ${colors.reset}`);
+  console.log(`${colors.dim}─────┼─────────────────────────────────────────────┼──────────────┼────────┼────────┼─────────────┼────────────┼────────${colors.reset}`);
 }
 
 /**
- * Calculate mint statistics across all signers
+ * Format number with appropriate units
  */
-function calculateMintStats() {
-  const mintStats = new Map();
-  
-  signerTrackers.forEach((signerData) => {
-    // Process each mint for this signer
-    Object.entries(signerData.mints).forEach(([mintAddress, mintData]) => {
-      if (!mintStats.has(mintAddress)) {
-        mintStats.set(mintAddress, {
-          address: mintAddress,
-          name: mintData.name,
-          totalProfit: 0,
-          txnCount: 0,
-          failCount: 0,
-          jitoTips: [],
-          spamTips: [],
-          signers: new Set()
-        });
-      }
-      
-      const stats = mintStats.get(mintAddress);
-      stats.txnCount += mintData.count;
-      stats.failCount += mintData.failed;
-      stats.signers.add(signerData.address);
-      
-      // Add tips from recent transactions
-      signerData.recentTransactions.forEach(tx => {
-        if (tx.mint === mintAddress) {
-          if (tx.type === 'jito' && tx.tipAmount > 0) {
-            stats.jitoTips.push(tx.tipAmount);
-            stats.totalProfit += tx.tipAmount;
-          } else if (tx.type === 'spam' && tx.tipAmount > 0) {
-            stats.spamTips.push(tx.tipAmount);
-            stats.totalProfit -= tx.tipAmount; // Spam tips are costs
-          }
-        }
-      });
-    });
-  });
-  
-  return mintStats;
+function formatNumber(num) {
+  if (num >= 1e9) return (num / 1e9).toFixed(2) + 'B';
+  if (num >= 1e6) return (num / 1e6).toFixed(2) + 'M';
+  if (num >= 1e3) return (num / 1e3).toFixed(2) + 'K';
+  return num.toString();
 }
 
 /**
- * Display mint profit table
+ * Display mint profit table with enhanced formatting
  */
 function displayMintProfitTable() {
   displayMintTableHeader();
   
-  const mintStats = calculateMintStats();
-  const sortedMints = Array.from(mintStats.values())
+  // Sort mints by total profit
+  const sortedMints = Array.from(mintProfitStats.values())
     .sort((a, b) => b.totalProfit - a.totalProfit)
     .slice(0, 10);
   
   sortedMints.forEach((mint, index) => {
-    const rank = (index + 1).toString().padStart(2);
-    const mintAddr = mint.address.padEnd(44);
-    const profit = mint.totalProfit >= 0 
-      ? colors.green + '+' + mint.totalProfit.toLocaleString().padStart(12) + colors.reset
-      : colors.red + mint.totalProfit.toLocaleString().padStart(13) + colors.reset;
-    const txnCount = mint.txnCount.toString().padStart(9);
-    const failCount = mint.failCount.toString().padStart(10);
+    const rank = `#${(index + 1)}`.padEnd(3);
+    const mintAddr = mint.address.padEnd(43);
     
-    // Calculate tip ranges
-    const jitoRange = mint.jitoTips.length > 0 
-      ? `${Math.min(...mint.jitoTips)}-${Math.max(...mint.jitoTips)}`.padEnd(21)
-      : 'N/A'.padEnd(21);
+    // Calculate profit display
+    const profit = formatNumber(mint.totalProfit).padStart(12);
     
-    const spamRange = mint.spamTips.length > 0
-      ? `${Math.min(...mint.spamTips)}-${Math.max(...mint.spamTips)}`.padEnd(21)
-      : 'N/A'.padEnd(21);
+    // Transaction counts
+    const txnCount = `${mint.successCount}.${mint.failCount}`.padEnd(6);
+    const failPercent = mint.txnCount > 0 ? ((mint.failCount / mint.txnCount) * 100).toFixed(2) : '0.00';
+    const fails = `${mint.failCount} ${failPercent}%`.padEnd(6);
+    
+    // Net volume per minute (assuming 1 min intervals)
+    const netVol = formatNumber(Math.abs(mint.netVolume)).padStart(11);
+    
+    // Total fees
+    const totalFee = formatNumber(mint.totalFees).padStart(10);
     
     // Calculate ROI
-    const totalCost = mint.spamTips.reduce((a, b) => a + b, 0);
-    const roi = totalCost > 0 ? ((mint.totalProfit / totalCost) * 100).toFixed(1) + '%' : 'N/A';
+    const roi = mint.totalFees > 0 ? ((mint.totalProfit / mint.totalFees) * 100).toFixed(2) : '0.00';
     
-    console.log(` ${rank}  │ ${mintAddr} │ ${profit} │ ${txnCount} │ ${failCount} │ ${jitoRange} │ ${spamRange} │ ${roi.padStart(7)} `);
+    console.log(` ${rank} | ${mintAddr} | ${profit} | ${txnCount} | ${fails} | ${netVol} | ${totalFee} | ${roi.padStart(6)}%`);
   });
   
-  console.log(`${colors.bright}${colors.cyan}─────┴──────────────────────────────────────────────────────┴───────────────┴───────────┴────────────┴───────────────────────┴───────────────────────┴─────────${colors.reset}`);
-  console.log(`\n${colors.dim}Last updated: ${new Date().toLocaleString()} | Tracking ${signerTrackers.size} signers${colors.reset}`);
+  // Add Jito and Spam tip ranges with averages
+  console.log(`${colors.dim}─────┴─────────────────────────────────────────────┴──────────────┴────────┴────────┴─────────────┴────────────┴────────${colors.reset}`);
+  
+  // Calculate global averages
+  let totalJitoTips = [];
+  let totalSpamTips = [];
+  
+  mintProfitStats.forEach(mint => {
+    totalJitoTips = totalJitoTips.concat(mint.jitoTips);
+    totalSpamTips = totalSpamTips.concat(mint.spamTips);
+  });
+  
+  const avgJito = totalJitoTips.length > 0 ? Math.round(totalJitoTips.reduce((a, b) => a + b, 0) / totalJitoTips.length) : 0;
+  const avgSpam = totalSpamTips.length > 0 ? Math.round(totalSpamTips.reduce((a, b) => a + b, 0) / totalSpamTips.length) : 0;
+  
+  const jitoRange = totalJitoTips.length > 0 
+    ? `${Math.min(...totalJitoTips)}-${Math.max(...totalJitoTips)} (avg: ${avgJito})`
+    : 'N/A';
+  
+  const spamRange = totalSpamTips.length > 0
+    ? `${Math.min(...totalSpamTips)}-${Math.max(...totalSpamTips)} (avg: ${avgSpam})`
+    : 'N/A';
+  
+  console.log(`\n${colors.yellow}Jito Range:${colors.reset} ${jitoRange} | ${colors.yellow}Spam Range:${colors.reset} ${spamRange}`);
+  console.log(`${colors.dim}Tracking ${signerTrackers.size} signers | Last updated: ${new Date().toLocaleTimeString()}${colors.reset}`);
 }
 
 /**
- * Display mint profit table with pool details
+ * Display mint pool table with details
  */
 function displayMintPoolTable() {
   console.clear();
-  console.log(`${colors.bright}${colors.green}═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════${colors.reset}`);
-  console.log(`${colors.bright}${colors.green}                                                                  REAL-TIME MINT & POOL PROFIT ANALYSIS                                                                                                               ${colors.reset}`);
-  console.log(`${colors.bright}${colors.green}═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════${colors.reset}`);
+  console.log(`${colors.bright}${colors.white}===== TOP 10 INTERMEDIATE MINTS BY PROFIT WITH POOL DETAILS =====${colors.reset}`);
   
-  const mintStats = calculateMintStats();
-  const sortedMints = Array.from(mintStats.values())
+  // Sort mints by total profit
+  const sortedMints = Array.from(mintProfitStats.values())
     .sort((a, b) => b.totalProfit - a.totalProfit)
     .slice(0, 10);
   
   sortedMints.forEach((mint, index) => {
     // Display mint header
-    console.log(`\n${colors.bright}${colors.yellow}[${index + 1}] Mint: ${mint.address}${colors.reset}`);
-    console.log(`    ${colors.cyan}Profit: ${mint.totalProfit >= 0 ? colors.green : colors.red}${mint.totalProfit >= 0 ? '+' : ''}${mint.totalProfit.toLocaleString()}${colors.reset} │ Txns: ${mint.txnCount} │ Failed: ${mint.failCount} │ ROI: ${calculateROI(mint)}`);
+    console.log(`\n${colors.bright}${colors.yellow}#${index + 1} Mint: ${mint.address}${colors.reset}`);
     
-    // Get pool stats for this mint
-    const poolStats = getPoolStatsForMint(mint.address);
-    if (poolStats.length > 0) {
+    // Calculate averages
+    const avgJito = mint.jitoTips.length > 0 
+      ? Math.round(mint.jitoTips.reduce((a, b) => a + b, 0) / mint.jitoTips.length) 
+      : 0;
+    const avgSpam = mint.spamTips.length > 0 
+      ? Math.round(mint.spamTips.reduce((a, b) => a + b, 0) / mint.spamTips.length) 
+      : 0;
+    
+    // ROI calculation
+    const roi = mint.totalFees > 0 ? ((mint.totalProfit / mint.totalFees) * 100).toFixed(2) : '0.00';
+    
+    console.log(`    ${colors.cyan}Profit: ${mint.totalProfit >= 0 ? colors.green : colors.red}${mint.totalProfit >= 0 ? '+' : ''}${formatNumber(mint.totalProfit)}${colors.reset} │ Txns: ${mint.txnCount} │ Success: ${mint.successCount} │ Failed: ${mint.failCount} │ ROI: ${roi}%`);
+    console.log(`    ${colors.cyan}Jito:${colors.reset} ${mint.jitoTips.length > 0 ? `${Math.min(...mint.jitoTips)}-${Math.max(...mint.jitoTips)} (avg: ${avgJito})` : 'N/A'} │ ${colors.cyan}Spam:${colors.reset} ${mint.spamTips.length > 0 ? `${Math.min(...mint.spamTips)}-${Math.max(...mint.spamTips)} (avg: ${avgSpam})` : 'N/A'}`);
+    
+    // Get top pools for this mint
+    const topPools = Array.from(mint.pools.values())
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+    
+    if (topPools.length > 0) {
       console.log(`    ${colors.dim}Top Pools:${colors.reset}`);
-      poolStats.slice(0, 5).forEach(pool => {
+      topPools.forEach(pool => {
         console.log(`      • ${colors.green}${pool.dexName}${colors.reset}: ${pool.address} (${pool.count} txns)`);
       });
     }
   });
   
-  console.log(`\n${colors.bright}${colors.cyan}═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════${colors.reset}`);
-  console.log(`${colors.dim}Last updated: ${new Date().toLocaleString()} | Tracking ${signerTrackers.size} signers${colors.reset}`);
+  console.log(`\n${colors.bright}${colors.cyan}${'═'.repeat(120)}${colors.reset}`);
+  console.log(`${colors.dim}Tracking ${signerTrackers.size} signers | Last updated: ${new Date().toLocaleTimeString()}${colors.reset}`);
 }
 
 /**
