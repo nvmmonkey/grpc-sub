@@ -249,18 +249,8 @@ function displayDetailedUpdate(signer, analysis, signerData) {
 function displayMintTableHeader() {
   console.clear();
   console.log(`${colors.bright}${colors.white}===== TOP 10 INTERMEDIATE MINTS BY PROFIT =====${colors.reset}`);
-  console.log(`${colors.bright}${colors.cyan}Rank | Intermediate Mint                            | Total Profit | Txns   | Fails      | Net Vol/min | Total Fee  | ROI    ${colors.reset}`);
+  console.log(`${colors.bright}${colors.cyan}Rank | Intermediate Mint                            | Profit (L)   | Txns   | Fails      | Net Vol (L) | Fees (L)   | ROI    ${colors.reset}`);
   console.log(`${colors.dim}─────┼──────────────────────────────────────────────┼──────────────┼────────┼────────────┼─────────────┼────────────┼────────${colors.reset}`);
-}
-
-/**
- * Format number with appropriate units
- */
-function formatNumber(num) {
-  if (num >= 1e9) return (num / 1e9).toFixed(2) + 'B';
-  if (num >= 1e6) return (num / 1e6).toFixed(2) + 'M';
-  if (num >= 1e3) return (num / 1e3).toFixed(2) + 'K';
-  return num.toString();
 }
 
 /**
@@ -278,19 +268,19 @@ function displayMintProfitTable() {
     const rank = `#${(index + 1)}`.padEnd(4);
     const mintAddr = mint.address.substring(0, 44).padEnd(44);
     
-    // Calculate profit display
-    const profit = formatNumber(mint.totalProfit).padStart(12);
+    // Calculate profit display - show actual lamports
+    const profit = mint.totalProfit.toLocaleString().padStart(12);
     
     // Transaction counts
     const txnCount = `${mint.successCount}.${mint.failCount}`.padEnd(6);
     const failPercent = mint.txnCount > 0 ? ((mint.failCount / mint.txnCount) * 100).toFixed(2) : '0.00';
     const fails = `${mint.failCount} ${failPercent}%`.padEnd(10);
     
-    // Net volume per minute (assuming 1 min intervals)
-    const netVol = formatNumber(Math.abs(mint.netVolume)).padStart(11);
+    // Net volume per minute (in lamports)
+    const netVol = Math.abs(mint.netVolume).toLocaleString().padStart(11);
     
-    // Total fees
-    const totalFee = formatNumber(mint.totalFees).padStart(10);
+    // Total fees (in lamports)
+    const totalFee = mint.totalFees.toLocaleString().padStart(10);
     
     // Calculate ROI
     const roi = mint.totalFees > 0 ? ((mint.totalProfit / mint.totalFees) * 100).toFixed(2) : '0.00';
@@ -306,18 +296,18 @@ function displayMintProfitTable() {
       : 0;
     
     const jitoRange = mint.jitoTips.length > 0 
-      ? `${Math.min(...mint.jitoTips)}-${Math.max(...mint.jitoTips)} (avg: ${avgJito})`
+      ? `${Math.min(...mint.jitoTips).toLocaleString()}-${Math.max(...mint.jitoTips).toLocaleString()} (avg: ${avgJito.toLocaleString()})`
       : 'N/A';
     
     const spamRange = mint.spamTips.length > 0
-      ? `${Math.min(...mint.spamTips)}-${Math.max(...mint.spamTips)} (avg: ${avgSpam})`
+      ? `${Math.min(...mint.spamTips).toLocaleString()}-${Math.max(...mint.spamTips).toLocaleString()} (avg: ${avgSpam.toLocaleString()})`
       : 'N/A';
     
     console.log(`      Jito: ${jitoRange} | Spam: ${spamRange}`);
   });
   
   console.log(`─────┴──────────────────────────────────────────────┴──────────────┴────────┴────────────┴─────────────┴────────────┴────────`);
-  console.log(`\nTracking ${signerTrackers.size} signers | Last updated: ${new Date().toLocaleTimeString()}`);
+  console.log(`\nNote: All values in lamports | Tracking ${signerTrackers.size} signers | Last updated: ${new Date().toLocaleTimeString()}`);
 }
 
 /**
@@ -335,13 +325,13 @@ function displayMintPoolTable() {
   sortedMints.forEach((mint, index) => {
     // Compact header with all info on one line
     const profit = mint.totalProfit >= 0 ? colors.green : colors.red;
-    const profitStr = `${mint.totalProfit >= 0 ? '+' : ''}${formatNumber(mint.totalProfit)}`;
+    const profitStr = `${mint.totalProfit >= 0 ? '+' : ''}${mint.totalProfit.toLocaleString()} lamports`;
     const roi = mint.totalFees > 0 ? ((mint.totalProfit / mint.totalFees) * 100).toFixed(1) : '0.0';
     
     console.log(`\n${colors.yellow}#${index + 1}${colors.reset} ${mint.address.substring(0, 44)}...`);
     console.log(`   ${profit}${profitStr}${colors.reset} | ${mint.txnCount} txns (${mint.successCount}✓/${mint.failCount}✗) | ROI: ${roi}%`);
     
-    // Jito/Spam on same line
+    // Jito/Spam on same line with lamports
     const avgJito = mint.jitoTips.length > 0 
       ? Math.round(mint.jitoTips.reduce((a, b) => a + b, 0) / mint.jitoTips.length) 
       : 0;
@@ -350,13 +340,13 @@ function displayMintPoolTable() {
       : 0;
     
     const jitoStr = mint.jitoTips.length > 0 
-      ? `${Math.min(...mint.jitoTips)}-${Math.max(...mint.jitoTips)} (avg: ${avgJito})`
+      ? `${Math.min(...mint.jitoTips).toLocaleString()}-${Math.max(...mint.jitoTips).toLocaleString()} (avg: ${avgJito.toLocaleString()})`
       : 'None';
     const spamStr = mint.spamTips.length > 0 
-      ? `${Math.min(...mint.spamTips)}-${Math.max(...mint.spamTips)} (avg: ${avgSpam})`
+      ? `${Math.min(...mint.spamTips).toLocaleString()}-${Math.max(...mint.spamTips).toLocaleString()} (avg: ${avgSpam.toLocaleString()})`
       : 'None';
     
-    console.log(`   J: ${jitoStr} | S: ${spamStr}`);
+    console.log(`   Jito: ${jitoStr} | Spam: ${spamStr}`);
     
     // Top 3 pools on one line each
     const topPools = Array.from(mint.pools.values())
@@ -370,7 +360,7 @@ function displayMintPoolTable() {
     }
   });
   
-  console.log(`\n${colors.dim}Tracking ${signerTrackers.size} signers | Updated: ${new Date().toLocaleTimeString()}${colors.reset}`);
+  console.log(`\n${colors.dim}Note: All values in lamports | Tracking ${signerTrackers.size} signers | Updated: ${new Date().toLocaleTimeString()}${colors.reset}`);
 }
 
 /**
