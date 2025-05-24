@@ -17,7 +17,9 @@
     "analyze-signers": "node analyze-signers.js",
     "report": "node generate-report.js",
     "view-analysis": "node view-analysis.js",
-    "decode-mev": "node decode-mev.js"
+    "decode-mev": "node decode-mev.js",
+    "clean-signers": "node clean-signer-files.js",
+    "reset-signers": "node reset-signers.js"
   },
   "keywords": [
     "solana",

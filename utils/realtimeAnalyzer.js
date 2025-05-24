@@ -15,12 +15,49 @@ if (!fs.existsSync(ANALYSIS_DIR)) {
 const signerTrackers = new Map();
 
 /**
+ * Load existing signer data from file if it exists
+ */
+function loadSignerData(signerAddress) {
+  const filename = `${signerAddress}.json`;
+  const filepath = path.join(ANALYSIS_DIR, filename);
+  
+  try {
+    if (fs.existsSync(filepath)) {
+      const data = JSON.parse(fs.readFileSync(filepath, 'utf8'));
+      
+      // Convert arrays back to Sets for poolContracts mints
+      if (data.poolContracts) {
+        Object.values(data.poolContracts).forEach(pool => {
+          if (Array.isArray(pool.mints)) {
+            pool.mints = new Set(pool.mints);
+          }
+        });
+      }
+      
+      return data;
+    }
+  } catch (error) {
+    console.error(`${colors.yellow}Warning: Could not load existing data for ${signerAddress}${colors.reset}`);
+  }
+  
+  return null;
+}
+
+/**
  * Initialize tracking for a signer
  */
 function startTrackingSigner(signerAddress) {
   if (!signerTrackers.has(signerAddress)) {
-    signerTrackers.set(signerAddress, initializeSignerData(signerAddress));
-    console.log(`${colors.cyan}Started tracking signer: ${signerAddress}${colors.reset}`);
+    // Try to load existing data first
+    const existingData = loadSignerData(signerAddress);
+    
+    if (existingData) {
+      signerTrackers.set(signerAddress, existingData);
+      console.log(`${colors.cyan}Loaded existing data for signer: ${signerAddress}${colors.reset}`);
+    } else {
+      signerTrackers.set(signerAddress, initializeSignerData(signerAddress));
+      console.log(`${colors.cyan}Started tracking signer: ${signerAddress}${colors.reset}`);
+    }
   }
 }
 

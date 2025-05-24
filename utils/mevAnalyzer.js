@@ -333,6 +333,10 @@ function updateSignerData(signerData, analysis) {
       }
       signerData.poolContracts[poolKey].count++;
       if (analysis.mint) {
+        // Ensure mints is a Set (in case it was loaded from JSON as an array)
+        if (!signerData.poolContracts[poolKey].mints.add) {
+          signerData.poolContracts[poolKey].mints = new Set(signerData.poolContracts[poolKey].mints || []);
+        }
         signerData.poolContracts[poolKey].mints.add(analysis.mint);
       }
     }
