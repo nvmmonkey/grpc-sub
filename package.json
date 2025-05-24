@@ -12,7 +12,8 @@
     "check-alts": "node check-alts.js",
     "debug-accounts": "node debug-accounts.js",
     "test-decode": "node test-decode.js",
-    "verify": "node verify-accounts.js"
+    "verify": "node verify-accounts.js",
+    "analyze-mev": "node analyze-mev.js"
   },
   "keywords": [
     "solana",
