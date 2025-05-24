@@ -272,9 +272,9 @@ function displayMintProfitTable() {
     const profit = mint.totalProfit.toLocaleString().padStart(12);
     
     // Transaction counts
-    const txnCount = `${mint.successCount}.${mint.failCount}`.padEnd(6);
-    const failPercent = mint.txnCount > 0 ? ((mint.failCount / mint.txnCount) * 100).toFixed(2) : '0.00';
-    const fails = `${mint.failCount} ${failPercent}%`.padEnd(10);
+    const txnCount = `${mint.successCount}/${mint.failCount}`.padEnd(7);
+    const failPercent = mint.txnCount > 0 ? ((mint.failCount / mint.txnCount) * 100).toFixed(1) : '0.0';
+    const fails = `${mint.failCount} (${failPercent}%)`.padEnd(11);
     
     // Net volume per minute (in lamports)
     const netVol = Math.abs(mint.netVolume).toLocaleString().padStart(11);
@@ -328,7 +328,7 @@ function displayMintPoolTable() {
     const profitStr = `${mint.totalProfit >= 0 ? '+' : ''}${mint.totalProfit.toLocaleString()} lamports`;
     const roi = mint.totalFees > 0 ? ((mint.totalProfit / mint.totalFees) * 100).toFixed(1) : '0.0';
     
-    console.log(`\n${colors.yellow}#${index + 1}${colors.reset} ${mint.address.substring(0, 44)}...`);
+    console.log(`\n${colors.yellow}#${index + 1}${colors.reset} ${mint.address}`);
     console.log(`   ${profit}${profitStr}${colors.reset} | ${mint.txnCount} txns (${mint.successCount}✓/${mint.failCount}✗) | ROI: ${roi}%`);
     
     // Jito/Spam on same line with lamports
@@ -355,7 +355,7 @@ function displayMintPoolTable() {
     
     if (topPools.length > 0) {
       topPools.forEach((pool, i) => {
-        console.log(`   ${i+1}. ${pool.dexName}: ${pool.address.substring(0, 44)}... (${pool.count}x)`);
+        console.log(`   ${i+1}. ${pool.dexName}: ${pool.address} (${pool.count}x)`);
       });
     }
   });

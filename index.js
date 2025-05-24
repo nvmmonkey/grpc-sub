@@ -113,7 +113,7 @@ async function startMevMonitor() {
         case '1':
           filterMode = 'raw';
           displayFilterSummary('raw');
-          await waitForEnter();
+          console.log('\nStarting raw subscription mode...');
           break;
           
         case '2':
@@ -123,12 +123,13 @@ async function startMevMonitor() {
           
           if (targetSigners.length === 0) {
             console.log(`${colors.red}No active signer addresses found. Please update onchain-sniper-address.json${colors.reset}`);
-            await waitForEnter('Press Enter to return to menu...');
+            console.log('\nReturning to menu...');
+            await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay
             continue;
           }
           
           displayFilterSummary('filtered', targetSigners.length);
-          await waitForEnter();
+          console.log('\nStarting filtered subscription mode...');
           break;
           
         case '3':
@@ -137,7 +138,7 @@ async function startMevMonitor() {
           console.log(`${colors.yellow}Transactions will be saved to sub-details.json${colors.reset}`);
           console.log(`${colors.yellow}Maximum ${MAX_SAVED_TRANSACTIONS} transactions will be kept${colors.reset}`);
           displayFilterSummary('save');
-          await waitForEnter();
+          console.log('\nStarting save mode...');
           break;
           
         case '4':
@@ -148,7 +149,8 @@ async function startMevMonitor() {
           const signerObjects = loadSignerObjects();
           if (signerObjects.length === 0) {
             console.log(`${colors.red}No signers found in onchain-sniper-address.json${colors.reset}`);
-            await waitForEnter();
+            console.log('\nReturning to menu...');
+            await new Promise(resolve => setTimeout(resolve, 2000));
             continue;
           }
           
@@ -173,10 +175,11 @@ async function startMevMonitor() {
             console.log(`\n${colors.green}Starting detailed real-time analysis for: ${signerObjects[selectedIndex].name || 'Unnamed'}${colors.reset}`);
             console.log(`${colors.yellow}Address: ${analyzeTarget}${colors.reset}`);
             console.log(`${colors.yellow}Analysis files will be saved to: signer-analysis/${analyzeTarget}.json${colors.reset}`);
-            await waitForEnter();
+            console.log('\nStarting analysis...');
           } else {
             console.log(`${colors.red}Invalid selection${colors.reset}`);
-            await waitForEnter();
+            console.log('\nReturning to menu...');
+            await new Promise(resolve => setTimeout(resolve, 2000));
             continue;
           }
           break;
@@ -189,7 +192,7 @@ async function startMevMonitor() {
           console.log(`${colors.yellow}This will track EVERY signer that appears in MEV transactions${colors.reset}`);
           console.log(`${colors.yellow}Analysis files will be saved to: signer-analysis/ directory${colors.reset}`);
           console.log(`${colors.yellow}Combined report: signer-analysis/combined-report.json${colors.reset}`);
-          await waitForEnter();
+          console.log('\nStarting analysis...');
           break;
           
         case '6':
@@ -199,7 +202,7 @@ async function startMevMonitor() {
           console.log(`\n${colors.green}Starting real-time mint profit analysis${colors.reset}`);
           console.log(`${colors.yellow}Tracking ALL signers automatically${colors.reset}`);
           console.log(`${colors.yellow}Table updates in real-time with each transaction${colors.reset}`);
-          await waitForEnter();
+          console.log('\nStarting table mode...');
           break;
           
         case '7':
@@ -209,7 +212,7 @@ async function startMevMonitor() {
           console.log(`\n${colors.green}Starting real-time mint & pool profit analysis${colors.reset}`);
           console.log(`${colors.yellow}Tracking ALL signers automatically${colors.reset}`);
           console.log(`${colors.yellow}Table updates in real-time with each transaction${colors.reset}`);
-          await waitForEnter();
+          console.log('\nStarting table mode...');
           break;
           
         case '8':
@@ -218,7 +221,7 @@ async function startMevMonitor() {
           
         default:
           console.log(`${colors.red}Invalid choice. Please try again.${colors.reset}`);
-          await waitForEnter();
+          await new Promise(resolve => setTimeout(resolve, 1500));
           continue;
       }
       
