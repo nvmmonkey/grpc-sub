@@ -7,15 +7,21 @@ Real-time monitoring of Solana MEV program transactions using Yellowstone gRPC w
 ```
 grpc-sub/
 ├── index.js           # Main entry point
-├── utils/             # Modular utilities
+├── utils/             # Core utilities
+│   ├── accountIdentifier.js  # Account identification and naming
 │   ├── colors.js      # Terminal color codes
 │   ├── constants.js   # Program IDs and constants
 │   ├── decoders.js    # Data decoding functions
+│   ├── fileSaver.js   # Transaction saving functionality
 │   ├── formatters.js  # Display formatting utilities
+│   ├── lookupTableResolver.js # Address Lookup Table resolution
 │   ├── menu.js        # Interactive menu system
+│   ├── mevAnalyzer.js # MEV transaction analysis
+│   ├── rateLimiter.js # RPC rate limiting
+│   ├── realtimeAnalyzer.js # Real-time analysis engine
 │   ├── signerFilter.js # Signer filtering logic
-│   ├── transactionParser.js  # Transaction parsing logic
-│   └── streamHandler.js      # gRPC stream management
+│   ├── streamHandler.js # gRPC stream management
+│   └── transactionParser.js # Transaction parsing logic
 ├── onchain-sniper-address.json  # Signer addresses configuration
 ├── package.json       # Node.js dependencies
 ├── .env.example       # Environment variables template
@@ -27,6 +33,12 @@ grpc-sub/
 - **Interactive Menu System**: Choose between different monitoring modes
 - **Raw Subscription Mode**: Monitor all MEV program transactions
 - **Signer Filter Mode**: Monitor only transactions from specific signers
+- **Save to File Mode**: Save transaction details for offline analysis
+- **Real-time Analysis Modes**: 
+  - Single signer detailed analysis
+  - All signers comprehensive analysis
+  - Mint profit table with real-time updates
+  - Mint & pool table with DEX details
 - **Address Lookup Table (ALT) Resolution**: Automatically resolves accounts from ALTs using RPC
 - Real-time transaction monitoring for MEV program `MEViEnscUm6tsQRoGd9h6nLQaQspKj7DB2M5FwM3Xvz`
 - Detailed transaction logging with color-coded output
@@ -210,6 +222,35 @@ In filtered mode, matching transactions also show:
   - Top 3 DEX pools for each mint
   - Transaction counts per pool
 
+## Supported DEX Programs
+
+The monitor recognizes and analyzes transactions from these DEX programs:
+
+- **Raydium**: v4, CLMM, CPMM variants
+- **Meteora**: DLMM, Dynamic Pool, Vault, Stable
+- **Orca**: Whirlpool
+- **Jupiter**: v6
+- **Pump.fun**: Token creation and trading
+- **Phoenix**: Order book DEX
+- **Serum**: Classic order book DEX
+
+## Environment Variables
+
+- `GRPC_URL` (Required): Your Yellowstone gRPC endpoint
+- `X_TOKEN` (Optional): Authentication token for gRPC endpoint
+- `RPC_URL` (Optional): Solana RPC endpoint for ALT resolution
+- `ALT_RESOLUTION` (Optional): Set to 'false' to disable ALT resolution
+- `RPC_RATE_LIMIT` (Optional): RPC calls per second (default: 10)
+- `DEBUG` (Optional): Set to 'true' for verbose debugging output
+
+## Analysis Output Files
+
+When using analysis modes, the following files are generated:
+
+- `signer-analysis/{address}.json` - Individual signer analysis data
+- `signer-analysis/combined-report.json` - Combined analysis of all signers
+- `sub-details.json` - Saved transaction details (Save mode)
+
 ## Requirements
 
 - Node.js >= 14.0.0
@@ -217,9 +258,16 @@ In filtered mode, matching transactions also show:
 - X_TOKEN (only if your gRPC endpoint requires authentication)
 - Network connection to the gRPC endpoint
 
+## Available Scripts
+
+- `npm start` - Start the MEV transaction monitor
+- `npm run dev` - Start in development mode (same as start)
+
 ## Notes
 
 - The monitor uses `PROCESSED` commitment level for faster updates
 - Failed transactions are also captured and displayed
 - The monitor excludes vote transactions to reduce noise
 - Signer filtering only matches actual transaction signers, not just accounts included in the transaction
+- ALT resolution significantly improves account identification but requires RPC access
+- All analysis data is saved in JSON format for easy post-processing

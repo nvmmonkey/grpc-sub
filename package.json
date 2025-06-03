@@ -5,21 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "node index.js",
-    "view": "node view-saved.js",
-    "analyze": "node analyze-accounts.js",
-    "test-rpc": "node test-rpc.js",
-    "check-alts": "node check-alts.js",
-    "debug-accounts": "node debug-accounts.js",
-    "test-decode": "node test-decode.js",
-    "verify": "node verify-accounts.js",
-    "analyze-mev": "node analyze-mev.js",
-    "analyze-signers": "node analyze-signers.js",
-    "report": "node generate-report.js",
-    "view-analysis": "node view-analysis.js",
-    "decode-mev": "node decode-mev.js",
-    "clean-signers": "node clean-signer-files.js",
-    "reset-signers": "node reset-signers.js"
+    "dev": "node index.js"
   },
   "keywords": [
     "solana",
